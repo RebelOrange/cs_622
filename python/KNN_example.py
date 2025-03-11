@@ -2,7 +2,7 @@ from Model import Model
 
 class KNN(Model):
     def __init__(self):
-        super.__init__()
+        super(KNN).__init__()
         pass
 
     ###################################### Base Class Model Overrides ##########################################
@@ -10,5 +10,12 @@ class KNN(Model):
         pass
 
 
+
     ###################################### KNN Methods ########################################################3
     #def Distance
+
+
+if __name__ == "__main__":
+    knn = KNN()
+
+    knn.Predict()

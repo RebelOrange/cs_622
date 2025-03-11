@@ -95,8 +95,6 @@ class DataManager:
             axs[i//ncols, i%ncols].set_title(self.TrainingData.loc[imagesToShow[i], "label"])
             axs[i//ncols, i%ncols].axis('off')
         plt.show()
-
-
         pass
 
 
@@ -115,7 +113,7 @@ if __name__ == "__main__":
     currentFolder = os.getcwd()
     print("Current folder: ", currentFolder)
     t.start()
-    dm.LoadTrainingData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=100)
+    dm.LoadTrainingData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=1000)
     t.stop()
 
     print(dm.TrainingData.head())
@@ -129,8 +127,8 @@ if __name__ == "__main__":
 
     print("Test 3: show random images...")
     t.start()
-    dm.ShowRandomImages(numImages=5, showGrayscale=False)
+    dm.ShowRandomImages(numImages=5, showGrayscale=True)
     t.stop()
-    
-    
+
+
 
