@@ -31,7 +31,7 @@ class DataManager:
         loadedFiles = 0
         missingFiles = 0
         for i in range(len(self.TrainingData)):
-            filepath = folderName + "\\train\\" + self.TrainingData.loc[i, "filename"]
+            filepath = folderName + "//train//" + self.TrainingData.loc[i, "filename"]
             self.TrainingData.loc[i, "path"] = filepath
             try:
                 image = DataFrameImage(np.asarray( Image.open(filepath) ))
@@ -105,8 +105,7 @@ class DataManager:
 # run the DataManager.py file to run below
 if __name__ == "__main__":
 
-    sys.path.insert(0, os.getcwd() + '/../timer/')
-    from time.Timer import Timer
+    from Timer import Timer
 
     t = Timer()
 
@@ -116,7 +115,7 @@ if __name__ == "__main__":
     currentFolder = os.getcwd()
     print("Current folder: ", currentFolder)
     t.start()
-    dm.LoadTrainingData(folderName=currentFolder+ "\\..\\..\\data\\", csvFileName="Training_set.csv", numFiles=100)
+    dm.LoadTrainingData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=100)
     t.stop()
 
     print(dm.TrainingData.head())
