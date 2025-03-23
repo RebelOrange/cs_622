@@ -1,4 +1,4 @@
-from DataManager import DataFrameImage
+
 
 class  Model:
     def __init__(self):
