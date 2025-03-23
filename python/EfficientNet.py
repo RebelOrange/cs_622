@@ -1,11 +1,6 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
-from torchvision.models import (
-    EfficientNet_B0_Weights, EfficientNet_B1_Weights,
-    EfficientNet_B4_Weights, EfficientNet_B5_Weights, 
-    EfficientNet_B6_Weights, EfficientNet_B7_Weights
-)
 import torchvision.transforms as transforms
 import torch.optim as optim
 import numpy as np
@@ -321,6 +316,8 @@ if __name__ == "__main__":
     print("Test 3: Initializing EfficientNet model...")
     model = EfficientNet(num_classes=num_classes, variant='b0')
     model.Preprocess(dm.TrainingData) # preprocess the data again
+
+    # might need to do split data or cross validation to get better results? 
     
     print("Test 4: Training model...")
     model.Train(dm.TrainingData, epochs=1, batch_size=8)
