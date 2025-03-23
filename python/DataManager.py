@@ -12,6 +12,7 @@ class DataFrameImage:
     def __init__(self, image: np.ndarray = None):
         self.image = image
         self.grayscale = None
+        #self.segmented = None
         pass
 
 class DataManager:
@@ -21,7 +22,7 @@ class DataManager:
         pass
 
     ############################# data loading methods ###############################################
-    def load_data(self, folder_name, csv_filename, subfolder, num_files=None):
+    def LoadData(self, folder_name, csv_filename, subfolder, num_files=None):
         # Read image csv
         if num_files is None:
             data = pd.read_csv(folder_name + csv_filename)
@@ -47,12 +48,12 @@ class DataManager:
         return data
     
     def LoadTrainingData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None):
-        self.TrainingData = self.load_data(folderName, csvFileName, "train", numFiles)
+        self.TrainingData = self.LoadData(folderName, csvFileName, "train", numFiles)
         pass
     
     ## maybe better to merge this and above together to avoid code duplication
     def LoadTestData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None):
-        self.TestData = self.load_data(folderName, csvFileName, "test", numFiles)
+        self.TestData = self.LoadData(folderName, csvFileName, "test", numFiles)
         pass
 
     def RemoveMissingData(self):
@@ -88,6 +89,33 @@ class DataManager:
 
         pass
 
+    def ResizeImages(self, TargetSize=(256,256)):
+        # resize all images to the target size
+        for image in self.TrainingData["image"]:
+            image.image = np.array(Image.fromarray(image.image).resize(TargetSize))
+
+        pass
+
+    def NormalizeImages(self):
+        # need to det which normalization method to use will be best 
+
+        # 1st: /255
+        for image in self.TrainingData["image"]:
+            image.image = image.image / 255.0
+
+        # 2nd: Z-score Normalization? 
+        #for image in self.TrainingData["image"]:
+        #    image.image = (image.image - np.mean(image.image)) / np.std(image.image) 
+
+        # 3rd: Min-Max?
+        #for image in self.TrainingData["image"]:
+        #    image.image = (image.image - np.min(image.image)) / (np.max(image.image) - np.min(image.image))
+        pass
+
+    def SegmentImages(self):
+        # should we do this here or in the model?
+        pass
+
     ################################### Data visualization Methods #########################################
     def PrintStats(self):
         # print stats of dataset
@@ -115,7 +143,7 @@ class DataManager:
 
         pass
 
-    def ShowRandomImages(self, numImages: int = 10, showGrayscale: bool = False):
+    def ShowRandomImages(self, numImages: int = 10, showGrayscale: bool = False, showSegmented: bool = False):
         # show a grid of images, selected at random, with the titles the labels of the image
         # random list of values
         imagesToShow = np.random.randint(0, len(self.TrainingData), numImages)
@@ -157,24 +185,34 @@ if __name__ == "__main__":
     #print(dm.TrainingData.describe())
     #print(dm.TrainingData.info())
 
-    print("Test 1.5: Print stats...")
+    print("\nTest 2: Print stats...")
     t.start()
     dm.PrintStats()
     t.stop()
 
-    print("Test 2: convert images to grayscale...")
+    print("\nTest 3: remove missing data...")
+    t.start()
+    dm.RemoveMissingData()
+    t.stop()
+
+    print("\nTest 4: Resize images...")
+    t.start()
+    dm.ResizeImages()
+    t.stop()
+
+    print("\nTest 5: convert images to grayscale...")
     t.start()
     dm.ConvertToGrayScale()
     t.stop()
 
-    print("Test 3: show random images...")
+    print("\nTest 7: Norm imgs...")
     t.start()
-    dm.ShowRandomImages(numImages=5, showGrayscale=True)
+    dm.NormalizeImages()
     t.stop()
 
-    print("Test 4: remove missing data...")
+    print("\nTest 8: show random images...")
     t.start()
-    dm.RemoveMissingData()
+    dm.ShowRandomImages(numImages=5, showGrayscale=False, showSegmented=True)
     t.stop()
 
 
