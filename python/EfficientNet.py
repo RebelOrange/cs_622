@@ -9,6 +9,7 @@ import time
 import os
 from Model import Model
 from DataManager import DataFrameImage, DataManager
+from ModelManager import ModelManager
 
 """
 Reference: 
@@ -32,8 +33,8 @@ class EfficientNet(Model):
         self.dropout_rate = dropout_rate
         self.drop_connect_rate = drop_connect_rate
     """
-    def __init__(self, num_classes, variant='b0'):
-        super(Model, self).__init__()
+    def __init__(self, num_classes, variant='b0', model_dir="models"):
+        super().__init__()
         
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
@@ -69,7 +70,10 @@ class EfficientNet(Model):
         
         self.transform = transforms.Compose([
         transforms.ToPILImage(),
-        transforms.Resize((224,224)),                                               
+        transforms.Resize((224,224)), 
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(10),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2),                                              
         transforms.ToTensor(),                           
         transforms.Normalize(                            
             mean=[0.485, 0.456, 0.406],                  
@@ -90,6 +94,14 @@ class EfficientNet(Model):
         # optimizer for training
         # might need to change to determine the best optimizer but use Adam for now
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
+
+        self.model_dir = model_dir
+        self.model_manager = ModelManager(
+            model=self.model,
+            optimizer=self.optimizer,
+            device=self.device,
+            model_dir=self.model_dir
+        )
 
     ################################ Data Processing Methods ###################################
     def PreprocessImages(self, image):
@@ -168,11 +180,17 @@ class EfficientNet(Model):
         return df
     
     ################################ Training Methods #####################################
-    def Train(self, df, epochs=10, batch_size=32):
+    def Train(self, df, epochs=10, batch_size=32, save_interval=1):
         self.SetupTraining(df)
         n_samples = len(df)
         indices = np.arange(n_samples)
         num_batches = (n_samples + batch_size - 1) // batch_size
+
+        start_epoch, best_loss = self.LoadModel("EfficientNet")
+        if start_epoch > 0:
+            print(f"Resuming training from epoch {start_epoch+1} with best loss: {best_loss:.4f}")
+        else:
+            best_loss = float('inf')
 
         print(f"Starting training: {epochs} epochs, {n_samples} samples, {num_batches} batches per epoch")
         
@@ -186,6 +204,14 @@ class EfficientNet(Model):
 
             epoch_time = time.time() - epoch_start_time
             self.DisplayEpoch(epoch, epochs, epoch_time, epoch_loss, epoch_acc)
+
+            if epoch_loss < best_loss:
+                best_loss = epoch_loss
+                self.SaveModel(epoch+1, epoch_loss, "EfficientNet", best=True)
+                print(f"New best model saved with loss: {epoch_loss:.4f}")
+            elif (epoch + 1) % save_interval == 0:
+                self.SaveModel(epoch+1, epoch_loss, "EfficientNet", best=False)
+                print(f"No new best model. Checkpoint saved at epoch {epoch+1}")
 
     def SetupTraining(self, df):
         if self.class_to_idx is None:
@@ -296,13 +322,23 @@ class EfficientNet(Model):
                 predictions.append(predicted_label)
                 
         return predictions
+    
+    ################################ Save/Load Models Methods ##################################
+    def SaveModel(self, epoch, loss, model_name="EfficientNet", best=True):
+        if best:
+            self.model_manager.save_best(epoch, loss, model_name)
+        else:
+            self.model_manager.save(epoch, loss, model_name)
+
+    def LoadModel(self, model_name="EfficientNet"):
+        return self.model_manager.load(best_only=True, model_name=model_name)
 
 ##################################### Testing Code ############################################
 if __name__ == "__main__":
     print("Test 1: Loading training data...")
     dm = DataManager()
     current_folder = os.getcwd()
-    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=1000)
+    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=100)
     
     print("Test 2: Preprocessing data...")
     dm.RemoveMissingData()
@@ -312,15 +348,19 @@ if __name__ == "__main__":
     
     num_classes = len(dm.TrainingData["label"].unique())
     # dm.PrintStats()
+
+    # create test folder to save best model to for save/load model test
+    model_dir = os.path.join(current_folder, "../models")
+    os.makedirs(model_dir, exist_ok=True)
     
     print("Test 3: Initializing EfficientNet model...")
-    model = EfficientNet(num_classes=num_classes, variant='b0')
+    model = EfficientNet(num_classes=num_classes, variant='b0', model_dir=model_dir)
     model.Preprocess(dm.TrainingData) # preprocess the data again
 
     # might need to do split data or cross validation to get better results? 
     
     print("Test 4: Training model...")
-    model.Train(dm.TrainingData, epochs=1, batch_size=8)
+    model.Train(dm.TrainingData, epochs=2, batch_size=8, save_interval=2)
     
     print("Test 5: Testing batch prediction...")
     test_batch = dm.TrainingData.sample(10)
