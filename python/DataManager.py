@@ -12,46 +12,65 @@ class DataFrameImage:
     def __init__(self, image: np.ndarray = None):
         self.image = image
         self.grayscale = None
+        #self.segmented = None
         pass
 
 class DataManager:
     def __init__(self):
         self.TrainingData = pd.DataFrame()
+        self.TestData = pd.DataFrame()
         pass
 
     ############################# data loading methods ###############################################
-    def LoadTrainingData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None):
-        # read image csv
-        if numFiles is None:
-            self.TrainingData = pd.read_csv(folderName + csvFileName)
+    def LoadData(self, folder_name, csv_filename, subfolder, num_files=None):
+        # Read image csv
+        if num_files is None:
+            data = pd.read_csv(folder_name + csv_filename)
         else:
-            self.TrainingData = pd.read_csv(folderName + csvFileName, nrows=numFiles)
+            data = pd.read_csv(folder_name + csv_filename, nrows=num_files)
 
-        # load files into dataframe with a new column for path
-        loadedFiles = 0
-        missingFiles = 0
-        for i in range(len(self.TrainingData)):
-            filepath = folderName + "//train//" + self.TrainingData.loc[i, "filename"]
-            self.TrainingData.loc[i, "path"] = filepath
+        # Load files into dataframe with a new column for path
+        loaded_files = 0
+        missing_files = 0
+        for i in range(len(data)):
+            filepath = folder_name + "//" + subfolder + "//" + data.loc[i, "filename"]
+            data.loc[i, "path"] = filepath
             try:
-                image = DataFrameImage(np.asarray( Image.open(filepath) ))
-                loadedFiles += 1
+                image = DataFrameImage(np.asarray(Image.open(filepath)))
+                loaded_files += 1
             except FileNotFoundError:
                 image = DataFrameImage()
-                missingFiles += 1
-            self.TrainingData.loc[i, "image"] = image
+                missing_files += 1
+            data.loc[i, "image"] = image
 
-        print("Loaded ", loadedFiles, " files, ", missingFiles, " files were missing.")
-
-
-
+        print(f"Loaded {loaded_files} files, {missing_files} files were missing.")
+    
+        return data
+    
+    def LoadTrainingData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None):
+        self.TrainingData = self.LoadData(folderName, csvFileName, "train", numFiles)
         pass
-
-    def LoadTestData(self, filepath: str = None):
+    
+    ## maybe better to merge this and above together to avoid code duplication
+    def LoadTestData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None):
+        self.TestData = self.LoadData(folderName, csvFileName, "test", numFiles)
         pass
 
     def RemoveMissingData(self):
-        # remove missing dataframe rows based on the self.TrainingData["image"].image being None type?
+        # remove missing dataframe rows based on the self.TrainingData["image"].image being None type? and maybe when 
+        # img is null to cover all cases
+        initial_count = len(self.TrainingData)
+        
+        # 1st case: null 
+        self.TrainingData = self.TrainingData[self.TrainingData["image"].notnull()]
+
+        #2nd case: None
+        valid_rows = [img.image is not None for img in self.TrainingData["image"]]
+        self.TrainingData = self.TrainingData[valid_rows]
+
+        removed_count = initial_count - len(self.TrainingData)
+        print(f"Removed {removed_count} rows with missing images. Remaining: {len(self.TrainingData)} rows.")
+
         pass
 
 
@@ -70,15 +89,61 @@ class DataManager:
 
         pass
 
-    ################################### Data visualization Methods #########################################
-    def PrintStats(self):
-        # print stats of dataset
-
-        # potentially plot some stats
+    def ResizeImages(self, TargetSize=(256,256)):
+        # resize all images to the target size
+        for image in self.TrainingData["image"]:
+            image.image = np.array(Image.fromarray(image.image).resize(TargetSize))
 
         pass
 
-    def ShowRandomImages(self, numImages: int = 10, showGrayscale: bool = False):
+    def NormalizeImages(self):
+        # need to det which normalization method to use will be best 
+
+        # 1st: /255
+        for image in self.TrainingData["image"]:
+            image.image = image.image / 255.0
+
+        # 2nd: Z-score Normalization? 
+        #for image in self.TrainingData["image"]:
+        #    image.image = (image.image - np.mean(image.image)) / np.std(image.image) 
+
+        # 3rd: Min-Max?
+        #for image in self.TrainingData["image"]:
+        #    image.image = (image.image - np.min(image.image)) / (np.max(image.image) - np.min(image.image))
+        pass
+
+    def SegmentImages(self):
+        # should we do this here or in the model?
+        pass
+
+    ################################### Data visualization Methods #########################################
+    def PrintStats(self):
+        # print stats of dataset
+        print("Training Data Stats:")
+        print("Describe Data:")
+        print(self.TrainingData.describe())
+        print("\nInfo:")
+        print(self.TrainingData.info())
+
+        # Print label distribution
+        label_counts = self.TrainingData['label'].value_counts()
+        print("\nLabel Distribution:")
+        print(label_counts)
+
+        # potentially plot some stats
+
+        # 1st: Visualize label distribution
+        plt.figure(figsize=(12, 6))
+        label_counts.plot(kind='bar')
+        plt.title("Distribution of Labels in Dataset")
+        plt.xlabel("Label")
+        plt.ylabel("Count")
+        plt.tight_layout()
+        plt.show()
+
+        pass
+
+    def ShowRandomImages(self, numImages: int = 10, showGrayscale: bool = False, showSegmented: bool = False):
         # show a grid of images, selected at random, with the titles the labels of the image
         # random list of values
         imagesToShow = np.random.randint(0, len(self.TrainingData), numImages)
@@ -116,19 +181,38 @@ if __name__ == "__main__":
     dm.LoadTrainingData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=1000)
     t.stop()
 
-    print(dm.TrainingData.head())
-    print(dm.TrainingData.describe())
-    print(dm.TrainingData.info())
+    #print(dm.TrainingData.head())
+    #print(dm.TrainingData.describe())
+    #print(dm.TrainingData.info())
 
-    print("Test 2: convert images to grayscale...")
+    print("\nTest 2: Print stats...")
+    t.start()
+    dm.PrintStats()
+    t.stop()
+
+    print("\nTest 3: remove missing data...")
+    t.start()
+    dm.RemoveMissingData()
+    t.stop()
+
+    print("\nTest 4: Resize images...")
+    t.start()
+    dm.ResizeImages()
+    t.stop()
+
+    print("\nTest 5: convert images to grayscale...")
     t.start()
     dm.ConvertToGrayScale()
     t.stop()
 
-    print("Test 3: show random images...")
+    print("\nTest 7: Norm imgs...")
     t.start()
-    dm.ShowRandomImages(numImages=5, showGrayscale=True)
+    dm.NormalizeImages()
     t.stop()
 
+    print("\nTest 8: show random images...")
+    t.start()
+    dm.ShowRandomImages(numImages=5, showGrayscale=False, showSegmented=True)
+    t.stop()
 
 
