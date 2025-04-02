@@ -180,13 +180,16 @@ class EfficientNet(Model):
         return df
     
     ################################ Training Methods #####################################
-    def Train(self, df, epochs=10, batch_size=32, save_interval=1):
+    def Train(self, df, epochs=10, batch_size=32, save_interval=1, load_model=True):
         self.SetupTraining(df)
         n_samples = len(df)
         indices = np.arange(n_samples)
         num_batches = (n_samples + batch_size - 1) // batch_size
 
-        start_epoch, best_loss = self.LoadModel("EfficientNet")
+        if load_model:
+            start_epoch, best_loss = self.LoadModel("EfficientNet")
+        else:
+            start_epoch = 0
         if start_epoch > 0:
             print(f"Resuming training from epoch {start_epoch+1} with best loss: {best_loss:.4f}")
         else:
@@ -360,7 +363,7 @@ if __name__ == "__main__":
     # might need to do split data or cross validation to get better results? 
     
     print("Test 4: Training model...")
-    model.Train(dm.TrainingData, epochs=2, batch_size=8, save_interval=2)
+    model.Train(dm.TrainingData, epochs=10, batch_size=8, save_interval=2, load_model=False)
     
     print("Test 5: Testing batch prediction...")
     test_batch = dm.TrainingData.sample(10)
