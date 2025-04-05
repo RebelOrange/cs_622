@@ -82,10 +82,10 @@ class DataManager:
         if image is None:
             # perform grayscale on all images in the datasets
             for image in self.TrainingData["image"]:
-                image.grayscale = np.mean(image.image[:,:,:], 2)
+                image = np.mean(image.image[:,:,:], 2)
 
         else:
-            image.grayscale =  np.mean(image.image[:,:,:], 2)
+            image =  np.mean(image.image[:,:,:], 2)
 
         pass
 
@@ -93,6 +93,8 @@ class DataManager:
         # resize all images to the target size
         for image in self.TrainingData["image"]:
             image.image = np.array(Image.fromarray(image.image).resize(TargetSize))
+
+        self.ImageSize = TargetSize
 
         pass
 
