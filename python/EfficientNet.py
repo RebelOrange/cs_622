@@ -24,6 +24,16 @@ Reference:
 - https://pytorch.org/docs/stable/index.html
 - https://pytorch.org/docs/stable/optim.html
 """
+
+"""TODO
+- Add more optimizers (custom optimizers)
+- Add more loss functions (custom loss functions)
+- Custom Learning Rate Scheduler
+- Regularization techniques (L1, L2, Dropout)? 
+- Add more data augmentation techniques (custom augmentations)
+- Remove the pre-trained weight so that it is more from scratch 
+- Softmax for multi-class classification
+"""
 class EfficientNet(Model):
     """
     class EfficientNet:
@@ -52,9 +62,13 @@ class EfficientNet(Model):
         # b6/7 are like large
         print(f"Loading EfficientNet-{variant} model...")
         # Replace the deprecated pretrained=True with weights parameter
+        #### TODO: replace the pre-trained weights with custom weights ############
+        # need to add custom weight methods and opimizers and learning rate schedulers
+        # as well as betteer data augmentation techniques
+        # also early stopping 
 
         if variant == 'b0':  
-            self.model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+            self.model = models.efficientnet_b0()
         elif variant == 'b1': 
             self.model = models.efficientnet_b1(weights=models.EfficientNet_B1_Weights.IMAGENET1K_V1)
         elif variant == 'b4': 
@@ -84,6 +98,7 @@ class EfficientNet(Model):
         num_features = self.model.classifier[1].in_features
         # might need to adjust this as we can add like ReLU or other activation functions to the model
         # to make it better
+        # use softmax for multi-class classification
         self.model.classifier[1] = nn.Sequential(
             nn.Dropout(0.2),  # prevent overfitting? but then maybe we can add seperate func to deal with overfit? as it might be better to have it as a seperate func
             nn.Linear(num_features, num_classes)  # classification layer
@@ -180,17 +195,22 @@ class EfficientNet(Model):
         return df
     
     ################################ Training Methods #####################################
-    def Train(self, df, epochs=10, batch_size=32, save_interval=1):
+    def Train(self, df, epochs=10, batch_size=32, save_interval=1, save_best=True, load_best=True):
         self.SetupTraining(df)
         n_samples = len(df)
         indices = np.arange(n_samples)
         num_batches = (n_samples + batch_size - 1) // batch_size
+        
 
-        start_epoch, best_loss = self.LoadModel("EfficientNet")
-        if start_epoch > 0:
-            print(f"Resuming training from epoch {start_epoch+1} with best loss: {best_loss:.4f}")
+        start_epoch = 0
+        best_loss = float('inf')
+
+        if load_best:
+            start_epoch, best_loss = self.LoadModel("EfficientNet")
+            if start_epoch > 0:
+                print(f"Resuming training from epoch {start_epoch+1} with best loss: {best_loss:.4f}")
         else:
-            best_loss = float('inf')
+            print("Start from beginning")
 
         print(f"Starting training: {epochs} epochs, {n_samples} samples, {num_batches} batches per epoch")
         
@@ -207,8 +227,11 @@ class EfficientNet(Model):
 
             if epoch_loss < best_loss:
                 best_loss = epoch_loss
-                self.SaveModel(epoch+1, epoch_loss, "EfficientNet", best=True)
-                print(f"New best model saved with loss: {epoch_loss:.4f}")
+                if save_best:
+                    self.SaveModel(epoch+1, epoch_loss, "EfficientNet", best=True)
+                    print(f"New best model saved with loss: {epoch_loss:.4f}")
+                else:
+                    print(f"New best loss: {epoch_loss:.4f} (model not saved)")
             elif (epoch + 1) % save_interval == 0:
                 self.SaveModel(epoch+1, epoch_loss, "EfficientNet", best=False)
                 print(f"No new best model. Checkpoint saved at epoch {epoch+1}")
@@ -338,7 +361,7 @@ if __name__ == "__main__":
     print("Test 1: Loading training data...")
     dm = DataManager()
     current_folder = os.getcwd()
-    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=100)
+    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=50)
     
     print("Test 2: Preprocessing data...")
     dm.RemoveMissingData()
@@ -360,7 +383,7 @@ if __name__ == "__main__":
     # might need to do split data or cross validation to get better results? 
     
     print("Test 4: Training model...")
-    model.Train(dm.TrainingData, epochs=2, batch_size=8, save_interval=2)
+    model.Train(dm.TrainingData, epochs=2, batch_size=8, save_interval=2, save_best=False, load_best=False)
     
     print("Test 5: Testing batch prediction...")
     test_batch = dm.TrainingData.sample(10)
