@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import time
 import os
 import random
+import math
 from Model import Model
 from DataManager import DataFrameImage, DataManager
 from ModelManager import ModelManager
@@ -714,20 +715,45 @@ if __name__ == "__main__":
     model.train(dm.TrainingData, epochs=2, batch_size=8, save_interval=2, save_best=False, load_best=False)
     
     print("\nTest 5: Testing model predictions...")
-    test_batch = dm.TrainingData.sample(10)
+    num_images = 20
+    test_batch = dm.TrainingData.sample(num_images)
     predicted_labels = model.predict(test_batch["image"])
-    # todo: make it in grid isnead of one by one
-    for i in range(len(test_batch)):
-        plt.figure(figsize=(6, 6))
+    
+    max_cols = 5
+    cols = min(num_images, max_cols)
+    rows = math.ceil(num_images / cols)
+    
+    fig, axes = plt.subplots(rows, cols, figsize=(cols*3, rows*3))
+    
+    if rows == 1:
+        axes = np.array([axes])
+    
+    if num_images == 1:
+        axes = np.array([[axes]])
+    
+    axes_flat = axes.flatten()
+    
+    for i in range(num_images):
+        ax = axes_flat[i]
+        
         img_obj = test_batch["image"].iloc[i]
         img_array = img_obj.image
         
-        plt.imshow(img_array)
+        ax.imshow(img_array)
         true_label = test_batch["label"].iloc[i]
         pred_label = predicted_labels[i]
-        plt.title(f"True: {true_label} | Predicted: {pred_label}")
-        plt.axis('off')
-        plt.show()
+        
+        color = 'green' if true_label == pred_label else 'red'
+        ax.set_title(f"True: {true_label}\nPred: {pred_label}", color=color)
+        ax.axis('off')
+    
+    for i in range(num_images, len(axes_flat)):
+        axes_flat[i].axis('off')
+    
+    plt.tight_layout()
+    plt.suptitle(f"Model Predictions on {num_images} Test Images", fontsize=16)
+    plt.subplots_adjust(top=0.9)
+    plt.show()
 
     correct = sum(1 for a, p in zip(test_batch["label"], predicted_labels) if a == p)
     accuracy = 100 * correct / len(test_batch["label"])
