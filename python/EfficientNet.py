@@ -116,15 +116,15 @@ class EfficientNet(Model):
     def setupTransform(self):
         self.transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.Resize((224, 224)),
+            transforms.Resize((160, 160)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation(10),
             transforms.ColorJitter(brightness=0.2, contrast=0.2),     
             transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),                                         
             transforms.ToTensor(),                           
             transforms.Normalize(                            
-                mean=[0.485, 0.456, 0.406],                  
-                std=[0.229, 0.224, 0.225]                    
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
             )
         ])
 
@@ -690,7 +690,9 @@ if __name__ == "__main__":
     current_folder = os.getcwd()
     dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=100)
     dm.RemoveMissingData()
-    
+    dm.NormalizeImages()
+    dm.ConvertToGrayScale()
+
     print("Test 2: Creating model")
     num_classes = len(dm.TrainingData["label"].unique())
     model_dir = os.path.join(current_folder, "../models")
@@ -698,7 +700,7 @@ if __name__ == "__main__":
     
     print("Test 3: Finding optimal configuration")
     model = EfficientNet(num_classes=num_classes, variant='b0', model_dir=model_dir)
-    best_config = model.findBestConfig(dm.TrainingData, validation_split=0.2, epochs=2, batch_size=8, max_configs=5)
+    best_config = model.findBestConfig(dm.TrainingData, validation_split=0.3, epochs=5, batch_size=52, max_configs=5)
     
     print("Test 4: Training model with best configuration")
     model = EfficientNet(
@@ -712,7 +714,7 @@ if __name__ == "__main__":
         dropout_rate=best_config['dropout'],
         use_l1_reg=best_config['l1']
     )
-    model.train(dm.TrainingData, epochs=2, batch_size=8, save_interval=2, save_best=False, load_best=False)
+    model.train(dm.TrainingData, epochs=5, batch_size=52, save_interval=2, save_best=False, load_best=False)
     
     print("\nTest 5: Testing model predictions...")
     num_images = 20
