@@ -69,9 +69,7 @@ if __name__ == "__main__":
     y_tst = []
     for index, row in dm.TestData.iterrows():
         img = row['image'].image
-        label = row['label']
         X_tst.append(img.flatten())
-        y_tst.append(label)
 
     X_tst = np.array(X_tst)
     y_tst = np.array(y_tst)
