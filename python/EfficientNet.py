@@ -35,17 +35,16 @@ Reference:
 - Regularization techniques (L1, L2, Dropout)? -> done
 - Softmax for multi-class classification -> done
 - Add more data augmentation techniques -> done
+- Fix load model -> done
+- remove l1 
 
 """
 
 """TODO NOT DONE
-- Custom Learning Rate Scheduler -> not done ? should do? or too muh already
-- Remove the pre-trained weight so that it is more from scratch -> too complex, should i try? 
 - Add better comments and documentation ****
 - Clean up and organize + optimize the code ****
 - Chnage into betteer splitting and training functions ****
 - train/eval/test as test fodler not have labels ****
-- Fix load model
 """
 
 ######################## EFF NET IMPLEMENTATION ########################

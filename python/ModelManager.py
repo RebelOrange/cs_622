@@ -57,7 +57,7 @@ class ModelManager:
 
     def load(self, best_only=True, model_name="model", filename=None):
         try:
-            if filename:  # If a specific filename is provided, use it
+            if filename:
                 model_path = os.path.join(self.model_dir, filename)
                 if not os.path.exists(model_path):
                     print(f"Specified file not found: {model_path}")
@@ -81,14 +81,12 @@ class ModelManager:
             print(f"Loading model from {model_path}")
             checkpoint = torch.load(model_path, map_location=self.device)
             
-            # Load model state
             if 'model_state_dict' in checkpoint:
                 self.model.load_state_dict(checkpoint['model_state_dict'])
             else:
                 print("Warning: No model_state_dict found in checkpoint")
                 return 0, float('inf')
             
-            # Load optimizer state
             if 'optimizer_state_dict' in checkpoint:
                 try:
                     self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
