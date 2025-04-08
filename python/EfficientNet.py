@@ -3,6 +3,7 @@ import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as transforms
 import torch.optim as optim
+from pytorch_toolbelt.losses import CrossEntropyFocalLoss, DiceLoss, SoftF1Loss
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -130,57 +131,22 @@ class EfficientNet(Model):
         ])
 
     ######################## LOSS FUNCTIONS ########################
-    def focal_loss(self, outputs, targets, gamma=2.0):
-        ce = nn.functional.cross_entropy(outputs, targets, reduction='none')
-        pt = torch.exp(-ce)
-        loss = (1 - pt) ** gamma * ce
-        return loss.mean()
-
-    def f1_loss(self, outputs, targets, epsilon=1e-7):
-        outputs = nn.functional.softmax(outputs, dim=1)
-        targets_one_hot = torch.zeros_like(outputs)
-        targets_one_hot.scatter_(1, targets.unsqueeze(1), 1)
-        
-        tp = torch.sum(outputs * targets_one_hot, dim=0)
-        fp = torch.sum(outputs * (1 - targets_one_hot), dim=0)
-        fn = torch.sum((1 - outputs) * targets_one_hot, dim=0)
-        
-        precision = tp / (tp + fp + epsilon)
-        recall = tp / (tp + fn + epsilon)
-        
-        f1 = 2 * precision * recall / (precision + recall + epsilon)
-        return 1 - f1.mean()
-
-    def dice_loss(self, outputs, targets, epsilon=1e-6):
-        outputs = nn.functional.softmax(outputs, dim=1)
-        
-        targets_one_hot = torch.zeros_like(outputs)
-        targets_one_hot.scatter_(1, targets.unsqueeze(1), 1)
-        
-        intersection = torch.sum(outputs * targets_one_hot, dim=0)
-        cardinality_pred = torch.sum(outputs, dim=0)
-        cardinality_true = torch.sum(targets_one_hot, dim=0)
-        
-        dice = (2 * intersection + epsilon) / (cardinality_pred + cardinality_true + epsilon)
-        return 1 - dice.mean()
-
     def createLossFunction(self, loss_function):
+        num_classes = self.model.classifier[1][1].out_features
+
         loss_functions = {
             'cross_entropy': nn.CrossEntropyLoss(),
             'label_smoothing': nn.CrossEntropyLoss(label_smoothing=0.1),
             'huber': nn.HuberLoss(),
+            'focal': CrossEntropyFocalLoss(),
+            'f1_loss': SoftF1Loss(),
+            'dice': DiceLoss(mode='multiclass', classes=list(range(num_classes)))
         }
-        
-        if loss_function == 'focal':
-            self.criterion = self.focal_loss
-        elif loss_function == 'f1_loss':
-            self.criterion = self.f1_loss
-        elif loss_function == 'dice':
-            self.criterion = self.dice_loss
+
+        if loss_function in loss_functions:
+            self.criterion = loss_functions[loss_function].to(self.device)
         else:
-            self.criterion = loss_functions.get(loss_function, nn.CrossEntropyLoss())
-            if loss_function not in loss_functions:
-                print(f"Warning: Unknown loss function '{loss_function}', defaulting to CrossEntropyLoss")
+            raise ValueError(f"Unsupported loss function: {loss_function}. Supported functions: {list(loss_functions.keys())}")
 
     ######################## OPTIMIZER ########################
     def createOptimizer(self, optimizer_name, learning_rate):
@@ -198,13 +164,13 @@ class EfficientNet(Model):
                 nesterov=True,
                 weight_decay=self.l2_weight_decay
             )
-        elif optimizer_name == 'rmsprop':
-            self.optimizer = optim.RMSprop(
-                self.model.parameters(), 
-                lr=learning_rate,
-                momentum=0.9,
-                weight_decay=self.l2_weight_decay
-            )
+        #elif optimizer_name == 'rmsprop':
+        #    self.optimizer = optim.RMSprop(
+        #        self.model.parameters(), 
+        #        lr=learning_rate,
+        #        momentum=0.9,
+        #        weight_decay=self.l2_weight_decay
+        #    )
         elif optimizer_name == 'adamw':
             self.optimizer = optim.AdamW(
                 self.model.parameters(), 
@@ -496,8 +462,8 @@ class EfficientNet(Model):
         else:
             self.model_manager.save(epoch, loss, model_name)
 
-    def loadModel(self, model_name="EfficientNet"):
-        return self.model_manager.load(best_only=True, model_name=model_name)
+    def loadModel(self, model_name="EfficientNet", filename=None):
+        return self.model_manager.load(best_only=(filename is None), model_name=model_name, filename=filename)
     
     ######################## EVALUATION & TUNING ########################
     def evaluate(self, df, batch_size=32):
@@ -600,7 +566,8 @@ class EfficientNet(Model):
         return train_df, val_df
     
     def generateConfigs(self, max_configs):
-        optimizer_options = ['adam', 'sgd', 'adamw', 'rmsprop', 'radam']
+        # optimizer_options = ['adam', 'sgd', 'adamw', 'rmsprop', 'radam']
+        optimizer_options = ['adam', 'sgd', 'radam', 'adamw']
         lr_options = [0.01, 0.001, 0.0001]
         l2_weight_decay_options = [0.0, 0.0001, 0.001, 0.01]
         loss_function_options = ['cross_entropy', 'focal', 'label_smoothing', 'f1_loss', 'dice']
@@ -634,10 +601,10 @@ class EfficientNet(Model):
     def sampleConfigs(self, configs, max_configs):
         baseline_configs = [
             {'optimizer': 'adam', 'lr': 0.001, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
-            {'optimizer': 'sgd', 'lr': 0.01, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
+            #{'optimizer': 'sgd', 'lr': 0.01, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
             #{'optimizer': 'rmsprop', 'lr': 0.001, 'wd': 0.0, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
             #{'optimizer': 'adamw', 'lr': 0.001, 'wd': 0.001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
-            {'optimizer': 'radam', 'lr': 0.001, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False}
+            #{'optimizer': 'radam', 'lr': 0.001, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False}
         ]
         
         remaining_configs = [c for c in configs if c not in baseline_configs]
@@ -697,7 +664,7 @@ if __name__ == "__main__":
     dm = DataManager()
     current_folder = os.getcwd()
     
-    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv")
+    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=100)
     dm.RemoveMissingData()
     
     print("Test 2: Creating model")
@@ -707,21 +674,23 @@ if __name__ == "__main__":
     
     print("Test 3: Finding optimal configuration")
     model = EfficientNet(num_classes=num_classes, variant='b0', model_dir=model_dir)
-    best_config = model.findBestConfig(dm.TrainingData, validation_split=0.2, epochs=3, batch_size=64, max_configs=5)
+
     
-    print("Test 4: Training model with best configuration")
-    model = EfficientNet(
-        num_classes=num_classes,
-        variant='b0',
-        model_dir=model_dir,
-        optimizer_name=best_config['optimizer'],
-        learning_rate=best_config['lr'],
-        l2_weight_decay=best_config['wd'],
-        loss_function=best_config['loss'],
-        dropout_rate=best_config['dropout'],
-        use_l1_reg=best_config['l1']
-    )
-    model.train(dm.TrainingData, epochs=20, batch_size=64, save_interval=2, save_best=True, load_best=True)
+    #best_config = model.findBestConfig(dm.TrainingData, validation_split=0.2, epochs=3, batch_size=64, max_configs=1)
+    #
+    #print("Test 4: Training model with best configuration")
+    #model = EfficientNet(
+    #    num_classes=num_classes,
+    #    variant='b0',
+    #    model_dir=model_dir,
+    #    optimizer_name=best_config['optimizer'],
+    #    learning_rate=best_config['lr'],
+    #    l2_weight_decay=best_config['wd'],
+    #    loss_function=best_config['loss'],
+    #    dropout_rate=best_config['dropout'],
+    #    use_l1_reg=best_config['l1']
+    #)
+    #model.train(dm.TrainingData, epochs=3, batch_size=8, save_interval=2, save_best=True, load_best=True)
     
     
     print("\nTest 5: Testing model predictions...")
@@ -730,9 +699,14 @@ if __name__ == "__main__":
 
     model.setupClassMapping(dm.TrainingData)
 
+    start_epoch, best_loss = model.loadModel("EfficientNet")
+    print(f"\nLoaded model from epoch {start_epoch} with best loss: {best_loss:.4f}")
+    model.model.eval()
+
     # Direct model loading - bypass ModelManager if we not train the model as the loadmodel is work only if we train the model
     # uncomment to get the predict csv file
     
+    """
     model_path = os.path.join(model_dir, "EfficientNet_best.pth")
     if os.path.exists(model_path):
         try:
@@ -761,7 +735,9 @@ if __name__ == "__main__":
             print(os.listdir(model_dir))
         except:
             print("Could not list directory contents")
+    """
 
+    """
     model.model.eval()
 
     test_predictions = model.predict(dm.TestData["image"])
@@ -772,9 +748,10 @@ if __name__ == "__main__":
     })
     result_df.to_csv("test_predictions.csv", index=False)
     print("Predictions saved to test_predictions.csv")
-    
+    """
 
     ## test predict with the batch of images from the training data
+    """
     print("\nTest 6: Testing model predictions on a batch of training data...")
     num_images = 50
     test_batch = dm.TrainingData.sample(num_images)
@@ -819,7 +796,9 @@ if __name__ == "__main__":
     correct = sum(1 for a, p in zip(test_batch["label"], predicted_labels) if a == p)
     accuracy = 100 * correct / len(test_batch["label"])
     print(f"Batch test accuracy: {accuracy:.2f}%")
+    """
 
+    """
     print("Test 7: Predict/Actual of Whole Training Data + Accuracy")
     predicted_labels = model.predict(dm.TrainingData["image"])
     correct = sum(1 for a, p in zip(dm.TrainingData["label"], predicted_labels) if a == p)
@@ -828,3 +807,4 @@ if __name__ == "__main__":
     
     print("Done")
     print("="*50)
+    """

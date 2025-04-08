@@ -55,14 +55,19 @@ class ModelManager:
         print(f"Best model saved to {best_model_path}")
         return best_model_path
 
-    def load(self, best_only=True, model_name="model"):
+    def load(self, best_only=True, model_name="model", filename=None):
         try:
-            if best_only:
+            if filename:  # If a specific filename is provided, use it
+                model_path = os.path.join(self.model_dir, filename)
+                if not os.path.exists(model_path):
+                    print(f"Specified file not found: {model_path}")
+                    return 0, float('inf')
+            elif best_only:  # Load the best model if no filename is provided
                 model_path = os.path.join(self.model_dir, f'{model_name}_best.pth')
                 if not os.path.exists(model_path):
                     print(f"No best model found at {model_path}")
                     return self.load(best_only=False, model_name=model_name)
-            else:
+            else:  # Load the latest model based on epoch and loss
                 model_files = glob.glob(os.path.join(self.model_dir, f'{model_name}_epoch*_loss*.pth'))
                 if not model_files:
                     model_path = os.path.join(self.model_dir, f'{model_name}.pth')
@@ -75,9 +80,28 @@ class ModelManager:
             
             print(f"Loading model from {model_path}")
             checkpoint = torch.load(model_path, map_location=self.device)
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            return checkpoint['epoch'], checkpoint['loss']
+            
+            # Load model state
+            if 'model_state_dict' in checkpoint:
+                self.model.load_state_dict(checkpoint['model_state_dict'])
+            else:
+                print("Warning: No model_state_dict found in checkpoint")
+                return 0, float('inf')
+            
+            # Load optimizer state
+            if 'optimizer_state_dict' in checkpoint:
+                try:
+                    self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                except Exception as opt_error:
+                    print(f"Warning: Could not load optimizer state: {opt_error}")
+                    print("Continuing with current optimizer state")
+            else:
+                print("Warning: No optimizer_state_dict found in checkpoint")
+            
+            epoch = checkpoint.get('epoch', 0)
+            loss = checkpoint.get('loss', float('inf'))
+            
+            return epoch, loss
         except Exception as e:
             print(f"Error loading model: {e}")
             return 0, float('inf')
