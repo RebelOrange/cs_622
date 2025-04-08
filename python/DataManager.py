@@ -42,6 +42,8 @@ class DataManager:
                 image = DataFrameImage()
                 missing_files += 1
             data.loc[i, "image"] = image
+            if i % 1000 == 0:
+                print(f"Loaded {i} files...")
 
         print(f"Loaded {loaded_files} files, {missing_files} files were missing.")
     
@@ -103,7 +105,7 @@ class DataManager:
 
         # 1st: /255
         for image in self.TrainingData["image"]:
-            image.image = image.image / 255.0
+            image.image = (image.image / 255.0)
 
         # 2nd: Z-score Normalization? 
         #for image in self.TrainingData["image"]:

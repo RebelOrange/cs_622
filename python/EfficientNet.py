@@ -341,13 +341,13 @@ if __name__ == "__main__":
     print("Test 1: Loading training data...")
     dm = DataManager()
     current_folder = os.getcwd()
-    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=100)
+    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=7000)
     
     print("Test 2: Preprocessing data...")
     dm.RemoveMissingData()
     # maybe using tranformations from pytorch could be better?? if so maybe we can do that in preprocess()
-    #dm.ResizeImages(TargetSize=(224, 224))
-    #dm.NormalizeImages()
+    dm.ResizeImages(TargetSize=(224, 224))
+    dm.NormalizeImages()
     
     num_classes = len(dm.TrainingData["label"].unique())
     # dm.PrintStats()
@@ -363,7 +363,7 @@ if __name__ == "__main__":
     # might need to do split data or cross validation to get better results? 
     
     print("Test 4: Training model...")
-    model.Train(dm.TrainingData, epochs=10, batch_size=8, save_interval=2, load_model=False)
+    model.Train(dm.TrainingData, epochs=10, batch_size=16, save_interval=2, load_model=True)
     
     print("Test 5: Testing batch prediction...")
     test_batch = dm.TrainingData.sample(10)
