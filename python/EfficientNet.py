@@ -13,7 +13,6 @@ import math
 from Model import Model
 from DataManager import DataFrameImage, DataManager
 from ModelManager import ModelManager
-from torch.optim import RAdam
 
 """
 Reference: 
@@ -44,6 +43,8 @@ Reference:
 - Add better comments and documentation ****
 - Clean up and organize + optimize the code ****
 - Chnage into betteer splitting and training functions ****
+- train/eval/test as test fodler not have labels ****
+- Fix load model
 """
 
 ######################## EFF NET IMPLEMENTATION ########################
@@ -212,7 +213,7 @@ class EfficientNet(Model):
             )
         elif optimizer_name == 'radam':
             try:
-                self.optimizer = RAdam(
+                self.optimizer = optim.RAdam(
                     self.model.parameters(),
                     lr=learning_rate,
                     weight_decay=self.l2_weight_decay
@@ -246,6 +247,13 @@ class EfficientNet(Model):
         return self.transform(image_array)
     
     def setupClassMapping(self, df):
+        if "label" not in df.columns:
+            if self.class_to_idx is not None:
+                print("\nUsing existing class mapping as input df has no labels")
+                return
+            else:
+                raise ValueError("No class mapping exists and input dataframe has no labels")
+        
         unique_classes = sorted(df["label"].unique())
         
         self.class_to_idx = {}  
@@ -627,8 +635,8 @@ class EfficientNet(Model):
         baseline_configs = [
             {'optimizer': 'adam', 'lr': 0.001, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
             {'optimizer': 'sgd', 'lr': 0.01, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
-            {'optimizer': 'rmsprop', 'lr': 0.001, 'wd': 0.0, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
-            {'optimizer': 'adamw', 'lr': 0.001, 'wd': 0.001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
+            #{'optimizer': 'rmsprop', 'lr': 0.001, 'wd': 0.0, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
+            #{'optimizer': 'adamw', 'lr': 0.001, 'wd': 0.001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
             {'optimizer': 'radam', 'lr': 0.001, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False}
         ]
         
@@ -688,7 +696,8 @@ if __name__ == "__main__":
     print("Test 1: Loading training data")
     dm = DataManager()
     current_folder = os.getcwd()
-    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=100)
+    
+    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv")
     dm.RemoveMissingData()
     
     print("Test 2: Creating model")
@@ -698,7 +707,7 @@ if __name__ == "__main__":
     
     print("Test 3: Finding optimal configuration")
     model = EfficientNet(num_classes=num_classes, variant='b0', model_dir=model_dir)
-    best_config = model.findBestConfig(dm.TrainingData, validation_split=0.2, epochs=2, batch_size=8, max_configs=5)
+    best_config = model.findBestConfig(dm.TrainingData, validation_split=0.2, epochs=3, batch_size=64, max_configs=5)
     
     print("Test 4: Training model with best configuration")
     model = EfficientNet(
@@ -712,10 +721,62 @@ if __name__ == "__main__":
         dropout_rate=best_config['dropout'],
         use_l1_reg=best_config['l1']
     )
-    model.train(dm.TrainingData, epochs=2, batch_size=8, save_interval=2, save_best=False, load_best=False)
+    model.train(dm.TrainingData, epochs=20, batch_size=64, save_interval=2, save_best=True, load_best=True)
+    
     
     print("\nTest 5: Testing model predictions...")
-    num_images = 20
+    # load testing data
+    dm.LoadTestData(folderName=current_folder+"/../data/", csvFileName="Testing_set.csv")
+
+    model.setupClassMapping(dm.TrainingData)
+
+    # Direct model loading - bypass ModelManager if we not train the model as the loadmodel is work only if we train the model
+    # uncomment to get the predict csv file
+    
+    model_path = os.path.join(model_dir, "EfficientNet_best.pth")
+    if os.path.exists(model_path):
+        try:
+            print(f"Try to load model directly from {model_path}")
+            checkpoint = torch.load(model_path, map_location=model.device)
+            
+            if 'model_state_dict' in checkpoint:
+                model.model.load_state_dict(checkpoint['model_state_dict'])
+                print(f"Successfully loaded model weights from {model_path}")
+                
+                # Debug cause wtf is not working with otehr loading method
+                print(f"Checkpoint contains keys: {list(checkpoint.keys())}")
+                if 'epoch' in checkpoint:
+                    print(f"Model was trained for {checkpoint['epoch']} epochs")
+                if 'loss' in checkpoint:
+                    print(f"Model achieved loss of {checkpoint['loss']:.4f}")
+            else:
+                print(f"Error: Checkpoint doesn't contain model_state_dict")
+        except Exception as e:
+            print(f"Error loading model: {str(e)}")
+            print("Continuing with initialized model weights...")
+    else:
+        print(f"Warning: Model file not found at {model_path}")
+        print("Available files in model directory:")
+        try:
+            print(os.listdir(model_dir))
+        except:
+            print("Could not list directory contents")
+
+    model.model.eval()
+
+    test_predictions = model.predict(dm.TestData["image"])
+
+    result_df = pd.DataFrame({
+        'image_id': range(len(dm.TestData)),
+        'predicted_label': test_predictions
+    })
+    result_df.to_csv("test_predictions.csv", index=False)
+    print("Predictions saved to test_predictions.csv")
+    
+
+    ## test predict with the batch of images from the training data
+    print("\nTest 6: Testing model predictions on a batch of training data...")
+    num_images = 50
     test_batch = dm.TrainingData.sample(num_images)
     predicted_labels = model.predict(test_batch["image"])
     
@@ -758,3 +819,12 @@ if __name__ == "__main__":
     correct = sum(1 for a, p in zip(test_batch["label"], predicted_labels) if a == p)
     accuracy = 100 * correct / len(test_batch["label"])
     print(f"Batch test accuracy: {accuracy:.2f}%")
+
+    print("Test 7: Predict/Actual of Whole Training Data + Accuracy")
+    predicted_labels = model.predict(dm.TrainingData["image"])
+    correct = sum(1 for a, p in zip(dm.TrainingData["label"], predicted_labels) if a == p)
+    accuracy = 100 * correct / len(dm.TrainingData["label"])
+    print(f"Batch test accuracy: {accuracy:.2f}%")
+    
+    print("Done")
+    print("="*50)
