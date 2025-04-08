@@ -3,7 +3,8 @@ import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as transforms
 import torch.optim as optim
-from pytorch_toolbelt.losses import CrossEntropyFocalLoss, DiceLoss, SoftF1Loss
+from pytorch_toolbelt.losses import CrossEntropyFocalLoss
+from sckit_learn.model_selection import RandomizedSearchCV
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -15,19 +16,6 @@ from Model import Model
 from DataManager import DataFrameImage, DataManager
 from ModelManager import ModelManager
 
-"""
-Reference: 
-- https://pytorch.org/vision/stable/models/efficientnet.html
-- https://pytorch.org/hub/nvidia_deeplearningexamples_efficientnet/
-- https://github.com/lukemelas/EfficientNet-PyTorch
-- https://debuggercafe.com/transfer-learning-using-efficientnet-pytorch/
-- https://www.geeksforgeeks.org/ml-introduction-to-transfer-learning/
-- https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
-- https://www.freecodecamp.org/news/deep-learning-with-pytorch/
-- https://pytorch.org/tutorials/beginner/basics/optimization_tutorial.html
-- https://pytorch.org/docs/stable/index.html
-- https://pytorch.org/docs/stable/optim.html
-"""
 
 """TODO DONE 
 - Add more optimizers (custom optimizers) -> done
@@ -51,8 +39,7 @@ Reference:
 class EfficientNet(Model):
     def __init__(self, num_classes, variant='b0', model_dir="models",
                 optimizer_name='adam', learning_rate=0.001, l2_weight_decay=0.0001,
-                loss_function='cross_entropy', dropout_rate=0.2, use_l1_reg=False, 
-                l1_strength=0.0001, use_l2_reg=True):
+                loss_function='cross_entropy', dropout_rate=0.2, use_l2_reg=True):
         super().__init__()
         
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -60,11 +47,8 @@ class EfficientNet(Model):
         
         self.class_to_idx = None
         self.idx_to_class = None
-        
         self.model_dir = model_dir
         self.dropout_rate = dropout_rate
-        self.use_l1_reg = use_l1_reg
-        self.l1_strength = l1_strength
         self.use_l2_reg = use_l2_reg
         self.optimizer_name = optimizer_name
         self.learning_rate = learning_rate
@@ -87,31 +71,26 @@ class EfficientNet(Model):
     ######################## MODEL INITIALIZATION ########################
     def loadInitModel(self, variant, num_classes):
         print(f"\nLoading EfficientNet-{variant} model...")
-    
         supported_variants = ['b0', 'b1', 'b4', 'b5', 'b6', 'b7']
         
         if variant not in supported_variants:
             raise ValueError(f"Unsupported EfficientNet variant: {variant}. Supported variants: {supported_variants}")
         
-        if variant == 'b0':
-            self.model = models.efficientnet_b0(weights='DEFAULT')
-        elif variant == 'b1':
-            self.model = models.efficientnet_b1(weights='DEFAULT')
-        elif variant == 'b4':
-            self.model = models.efficientnet_b4(weights='DEFAULT')
-        elif variant == 'b5':
-            self.model = models.efficientnet_b5(weights='DEFAULT')
-        elif variant == 'b6':
-            self.model = models.efficientnet_b6(weights='DEFAULT')
-        elif variant == 'b7':
-            self.model = models.efficientnet_b7(weights='DEFAULT')
+        model_builders = {
+            'b0': models.efficientnet_b0,
+            'b1': models.efficientnet_b1,
+            'b4': models.efficientnet_b4,
+            'b5': models.efficientnet_b5,
+            'b6': models.efficientnet_b6,
+            'b7': models.efficientnet_b7
+        }
         
+        self.model = model_builders[variant](weights='DEFAULT')
         num_features = self.model.classifier[1].in_features
         self.model.classifier[1] = nn.Sequential(
             nn.Dropout(self.dropout_rate),
             nn.Linear(num_features, num_classes)
         )
-        
         self.model = self.model.to(self.device)
 
     def setupTransform(self):
@@ -123,10 +102,7 @@ class EfficientNet(Model):
             transforms.ColorJitter(brightness=0.2, contrast=0.2),     
             transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),                                         
             transforms.ToTensor(),                           
-            transforms.Normalize(                            
-                mean=[0.485, 0.456, 0.406],                  
-                std=[0.229, 0.224, 0.225]                    
-            )
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])                    
         ])
 
     ######################## LOSS FUNCTIONS ########################
@@ -136,10 +112,7 @@ class EfficientNet(Model):
         loss_functions = {
             'cross_entropy': nn.CrossEntropyLoss(),
             'label_smoothing': nn.CrossEntropyLoss(label_smoothing=0.1),
-            'huber': nn.HuberLoss(),
             'focal': CrossEntropyFocalLoss(),
-            'f1_loss': SoftF1Loss(),
-            'dice': DiceLoss(mode='multiclass', classes=list(range(num_classes)))
         }
 
         if loss_function in loss_functions:
@@ -149,64 +122,27 @@ class EfficientNet(Model):
 
     ######################## OPTIMIZER ########################
     def createOptimizer(self, optimizer_name, learning_rate):
-        if optimizer_name == 'adam':
-            self.optimizer = optim.Adam(
-                self.model.parameters(), 
-                lr=learning_rate,
-                weight_decay=self.l2_weight_decay
-            )
-        elif optimizer_name == 'sgd':
-            self.optimizer = optim.SGD(
-                self.model.parameters(), 
-                lr=learning_rate,
-                momentum=0.9, 
-                nesterov=True,
-                weight_decay=self.l2_weight_decay
-            )
-        #elif optimizer_name == 'rmsprop':
-        #    self.optimizer = optim.RMSprop(
-        #        self.model.parameters(), 
-        #        lr=learning_rate,
-        #        momentum=0.9,
-        #        weight_decay=self.l2_weight_decay
-        #    )
-        elif optimizer_name == 'adamw':
-            self.optimizer = optim.AdamW(
-                self.model.parameters(), 
-                lr=learning_rate,
-                weight_decay=self.l2_weight_decay
-            )
-        elif optimizer_name == 'radam':
+        optimizers = {
+            'adam': lambda: optim.Adam(self.model.parameters(), lr=learning_rate, weight_decay=self.l2_weight_decay),
+            'sgd': lambda: optim.SGD(self.model.parameters(), lr=learning_rate, momentum=0.9, nesterov=True, weight_decay=self.l2_weight_decay),
+            'adamw': lambda: optim.AdamW(self.model.parameters(), lr=learning_rate, weight_decay=self.l2_weight_decay)
+        }
+        
+        if optimizer_name == 'radam':
             try:
-                self.optimizer = optim.RAdam(
-                    self.model.parameters(),
-                    lr=learning_rate,
-                    weight_decay=self.l2_weight_decay
-                )
+                self.optimizer = optim.RAdam(self.model.parameters(), lr=learning_rate, weight_decay=self.l2_weight_decay)
+                return
             except ImportError:
                 print("Warning: RAdam not available, use Adam instead")
-                self.optimizer = optim.Adam(
-                    self.model.parameters(), 
-                    lr=learning_rate,
-                    weight_decay=self.l2_weight_decay
-                )
-        else:
-            print(f"Warning: Unknown optimizer {optimizer_name}, defaulting to Adam")
-            self.optimizer = optim.Adam(
-                self.model.parameters(), 
-                lr=learning_rate,
-                weight_decay=self.l2_weight_decay
-            )
+                optimizer_name = 'adam'
+        
+        self.optimizer = optimizers.get(optimizer_name, optimizers['adam'])()
 
     ######################## DATA PROCESSING ########################
     def preprocessImages(self, image):
-        if isinstance(image, DataFrameImage):
-            image_array = image.image
-        else:
-            image_array = image
-            
-        # Convert grayscale to RGB if needed as EfficientNet expects RGB
-        if image_array.ndim == 2:
+        image_array = image.image if isinstance(image, DataFrameImage) else image
+        
+        if image_array.ndim == 2:  # Convert grayscale to RGB
             image_array = np.stack([image_array, image_array, image_array], axis=2)
             
         return self.transform(image_array)
@@ -216,28 +152,21 @@ class EfficientNet(Model):
             if self.class_to_idx is not None:
                 print("\nUsing existing class mapping as input df has no labels")
                 return
-            else:
-                raise ValueError("No class mapping exists and input dataframe has no labels")
+            raise ValueError("No class mapping exists and input dataframe has no labels")
         
         unique_classes = sorted(df["label"].unique())
-        
-        self.class_to_idx = {}  
-        self.idx_to_class = {} 
-        
-        for idx, class_name in enumerate(unique_classes):
-            self.class_to_idx[class_name] = idx
-            self.idx_to_class[idx] = class_name
+        self.class_to_idx = {class_name: idx for idx, class_name in enumerate(unique_classes)}
+        self.idx_to_class = {idx: class_name for idx, class_name in enumerate(unique_classes)}
         
         print(f"\nSet up mapping for {len(unique_classes)} classes: {unique_classes}")
 
     def prepareBatch(self, dataframe, batch_indices):
-        batch_data = dataframe.iloc[batch_indices]
-        
-        image_tensors = [self.preprocessImages(img) for img in batch_data["image"]]
-        image_batch = torch.stack(image_tensors).to(self.device)
-        
         if self.class_to_idx is None:
             raise ValueError("Class mapping not initialized. Do setupClassMapping() before prepare batches.")
+            
+        batch_data = dataframe.iloc[batch_indices]
+        image_tensors = [self.preprocessImages(img) for img in batch_data["image"]]
+        image_batch = torch.stack(image_tensors).to(self.device)
         
         label_indices = [self.class_to_idx[label] for label in batch_data["label"]]
         label_tensor = torch.tensor(label_indices).to(self.device)
@@ -245,19 +174,13 @@ class EfficientNet(Model):
         return image_batch, label_tensor
 
     def preprocess(self, df):
-        if df is None:
-            raise ValueError("Error: Dataframe is None")
-            
-        if len(df) == 0:
-            raise ValueError("Error: Empty dataframe provided")
+        if df is None or len(df) == 0:
+            raise ValueError("Error: Dataframe is None or empty")
 
         try:
             sample_img = df["image"].iloc[0]
-            if isinstance(sample_img, DataFrameImage):
-                img_array = sample_img.image
-            else:
-                img_array = sample_img
-                
+            img_array = sample_img.image if isinstance(sample_img, DataFrameImage) else sample_img
+            
             if img_array.ndim < 2:
                 raise ValueError("Error: Images must be 2D or 3D arrays")
                 
@@ -311,7 +234,6 @@ class EfficientNet(Model):
         total = 0
         
         self.model.train()
-        
         np.random.shuffle(indices)
         
         for i in range(0, n_samples, batch_size):
@@ -320,13 +242,10 @@ class EfficientNet(Model):
             
             if track_metrics:
                 batch_loss, batch_correct, batch_total = self.processBatch(inputs, label_indices, return_metrics=True)
-                
                 running_loss += batch_loss
                 correct += batch_correct
                 total += batch_total
-
-                current_batch = (i // batch_size) + 1
-                self.displayProcess(current_batch, num_batches)
+                self.displayProcess((i // batch_size) + 1, num_batches)
             else:
                 self.processBatch(inputs, label_indices, return_metrics=False)
         
@@ -334,19 +253,12 @@ class EfficientNet(Model):
             epoch_loss = running_loss / num_batches
             epoch_acc = 100 * correct / total if total > 0 else 0
             return epoch_loss, epoch_acc
-        else:
-            return None, None
+        return None, None
 
     def processBatch(self, inputs, label_indices, return_metrics=True):
         self.optimizer.zero_grad()
-        
         outputs = self.model(inputs)
-        
         loss = self.criterion(outputs, label_indices)
-        
-        if self.use_l1_reg:
-            l1_norm = sum(p.abs().sum() for p in self.model.parameters())
-            loss += self.l1_strength * l1_norm
         
         loss.backward()
         self.optimizer.step()
@@ -365,8 +277,6 @@ class EfficientNet(Model):
         regularization_methods = []
         if self.dropout_rate > 0:
             regularization_methods.append(f"Dropout ({self.dropout_rate})")
-        if self.use_l1_reg:
-            regularization_methods.append(f"L1 reg (strength={self.l1_strength})")
         if self.use_l2_reg:
             regularization_methods.append(f"L2 reg (strength={self.l2_weight_decay})")
         
@@ -410,25 +320,16 @@ class EfficientNet(Model):
             return None
             
         self.model.eval()
-        
-        if isinstance(image, pd.Series):
-            return self.predictBatch(image)
-        else:
-            return self.predictSingle(image)
+        return self.predictBatch(image) if isinstance(image, pd.Series) else self.predictSingle(image)
 
     def predictSingle(self, image):
         with torch.no_grad():
-            img_tensor = self.preprocessImages(image)  
-            img_tensor = img_tensor.unsqueeze(0) 
-            img_tensor = img_tensor.to(self.device)  
-            
+            img_tensor = self.preprocessImages(image).unsqueeze(0).to(self.device)
             outputs = self.model(img_tensor)
             
             probabilities = torch.nn.functional.softmax(outputs, dim=1)
-            
             _, predicted_idx = torch.max(outputs, 1)
             confidence = probabilities[0][predicted_idx.item()].item()
-            
             predicted_label = self.idx_to_class[predicted_idx.item()]
 
             print(f"\nModel Predicted: {predicted_label} (confidence: {confidence:.2f})")
@@ -439,18 +340,13 @@ class EfficientNet(Model):
         
         with torch.no_grad():
             for img in images:
-                img_tensor = self.preprocessImages(img)  
-                img_tensor = img_tensor.unsqueeze(0) 
-                img_tensor = img_tensor.to(self.device) 
-                
+                img_tensor = self.preprocessImages(img).unsqueeze(0).to(self.device)
                 outputs = self.model(img_tensor)
                 
                 probabilities = torch.nn.functional.softmax(outputs, dim=1)
                 
                 _, predicted_idx = torch.max(outputs, 1)
-                
-                predicted_label = self.idx_to_class[predicted_idx.item()]
-                predictions.append(predicted_label)
+                predictions.append(self.idx_to_class[predicted_idx.item()])
                 
         return predictions
     
@@ -517,7 +413,6 @@ class EfficientNet(Model):
                 l2_weight_decay=config['wd'],
                 loss_function=config['loss'],
                 dropout_rate=config['dropout'],
-                use_l1_reg=config['l1']
             )
 
             self.model.train()
@@ -527,7 +422,6 @@ class EfficientNet(Model):
             val_acc = self.evaluate(val_df, batch_size)
             
             results.append({'config': config, 'val_acc': val_acc})
-            
             self.printConfigResult(i, config, val_acc)
 
             if val_acc > best_val_acc:
@@ -544,7 +438,6 @@ class EfficientNet(Model):
             l2_weight_decay=best_config['wd'],
             loss_function=best_config['loss'],
             dropout_rate=best_config['dropout'],
-            use_l1_reg=best_config['l1']
         )
         self.model.load_state_dict(best_model_state)
         
@@ -565,13 +458,11 @@ class EfficientNet(Model):
         return train_df, val_df
     
     def generateConfigs(self, max_configs):
-        # optimizer_options = ['adam', 'sgd', 'adamw', 'rmsprop', 'radam']
         optimizer_options = ['adam', 'sgd', 'radam', 'adamw']
         lr_options = [0.01, 0.001, 0.0001]
         l2_weight_decay_options = [0.0, 0.0001, 0.001, 0.01]
-        loss_function_options = ['cross_entropy', 'focal', 'label_smoothing', 'f1_loss', 'dice']
+        loss_function_options = ['cross_entropy', 'focal', 'label_smoothing']
         dropout_options = [0.0, 0.2, 0.5]
-        l1_options = [False, True]
         
         configs = []
         for opt in optimizer_options:
@@ -579,15 +470,10 @@ class EfficientNet(Model):
                 for wd in l2_weight_decay_options:
                     for loss in loss_function_options:
                         for dropout in dropout_options:
-                            for l1 in l1_options:
-                                configs.append({
-                                    'optimizer': opt,
-                                    'lr': lr,
-                                    'wd': wd,
-                                    'loss': loss,
-                                    'dropout': dropout,
-                                    'l1': l1
-                                })
+                            configs.append({
+                                'optimizer': opt, 'lr': lr, 'wd': wd,
+                                'loss': loss, 'dropout': dropout
+                            })
         
         total_configs = len(configs)
         print(f"\nGenerated {total_configs} possible configurations")
@@ -599,13 +485,11 @@ class EfficientNet(Model):
     
     def sampleConfigs(self, configs, max_configs):
         baseline_configs = [
-            {'optimizer': 'adam', 'lr': 0.001, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
-            #{'optimizer': 'sgd', 'lr': 0.01, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
-            #{'optimizer': 'rmsprop', 'lr': 0.001, 'wd': 0.0, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
-            #{'optimizer': 'adamw', 'lr': 0.001, 'wd': 0.001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False},
-            #{'optimizer': 'radam', 'lr': 0.001, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2, 'l1': False}
+            {'optimizer': 'adam', 'lr': 0.001, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2},
+            {'optimizer': 'sgd', 'lr': 0.01, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2},
+            {'optimizer': 'adamw', 'lr': 0.001, 'wd': 0.001, 'loss': 'cross_entropy', 'dropout': 0.2},
+            {'optimizer': 'radam', 'lr': 0.001, 'wd': 0.0001, 'loss': 'cross_entropy', 'dropout': 0.2}
         ]
-        
         remaining_configs = [c for c in configs if c not in baseline_configs]
         
         random_configs = random.sample(remaining_configs, min(max_configs - len(baseline_configs), len(remaining_configs)))
@@ -620,12 +504,11 @@ class EfficientNet(Model):
     def printConfigHeader(self):
         print("\nTesting configurations:")
         print("-" * 80)
-        print(f"{'Config':^8} {'Optimizer':^10} {'LR':^8} {'Loss':^15} {'Dropout':^8} {'L1':^6} {'L2 (wd)':^8} {'Val Acc':^10}")
+        print(f"{'Config':^8} {'Optimizer':^10} {'LR':^8} {'Loss':^15} {'Dropout':^8} {'L2 (wd)':^8} {'Val Acc':^10}")
         print("-" * 80)
     
     def printConfigResult(self, i, config, val_acc):
-        print(f"{i:^8} {config['optimizer']:^10} {config['lr']:^8.4f} {config['loss']:^15} "
-            f"{config['dropout']:^8.1f} {str(config['l1']):^6} {config['wd']:^8.5f} {val_acc:^10.2f}%")
+        print(f"{i:^8} {config['optimizer']:^10} {config['lr']:^8.4f} {config['loss']:^15} {config['dropout']:^8.1f} {config['wd']:^8.5f} {val_acc:^10.2f}%")
     
     def printConfigSummary(self, results, best_config, best_val_acc):
         results.sort(key=lambda x: x['val_acc'], reverse=True)
@@ -638,14 +521,12 @@ class EfficientNet(Model):
             print(f"{i+1}. {result['config']} - Acc: {result['val_acc']:.2f}%")
     
     def resetModel(self, num_classes, optimizer_name, learning_rate, l2_weight_decay, 
-                loss_function, dropout_rate, use_l1_reg):
+                loss_function, dropout_rate):
         self.optimizer_name = optimizer_name
         self.learning_rate = learning_rate
         self.l2_weight_decay = l2_weight_decay
         self.loss_function_name = loss_function
         self.dropout_rate = dropout_rate
-        self.use_l1_reg = use_l1_reg
-        self.l1_strength = 0.0001
         
         num_features = self.model.classifier[1][1].in_features
         self.model.classifier[1] = nn.Sequential(
@@ -673,23 +554,20 @@ if __name__ == "__main__":
     
     print("Test 3: Finding optimal configuration")
     model = EfficientNet(num_classes=num_classes, variant='b0', model_dir=model_dir)
-
+    best_config = model.findBestConfig(dm.TrainingData, validation_split=0.2, epochs=3, batch_size=64, max_configs=1)
     
-    #best_config = model.findBestConfig(dm.TrainingData, validation_split=0.2, epochs=3, batch_size=64, max_configs=1)
-    #
-    #print("Test 4: Training model with best configuration")
-    #model = EfficientNet(
-    #    num_classes=num_classes,
-    #    variant='b0',
-    #    model_dir=model_dir,
-    #    optimizer_name=best_config['optimizer'],
-    #    learning_rate=best_config['lr'],
-    #    l2_weight_decay=best_config['wd'],
-    #    loss_function=best_config['loss'],
-    #    dropout_rate=best_config['dropout'],
-    #    use_l1_reg=best_config['l1']
-    #)
-    #model.train(dm.TrainingData, epochs=3, batch_size=8, save_interval=2, save_best=True, load_best=True)
+    print("Test 4: Training model with best configuration")
+    model = EfficientNet(
+        num_classes=num_classes,
+        variant='b0',
+        model_dir=model_dir,
+        optimizer_name=best_config['optimizer'],
+        learning_rate=best_config['lr'],
+        l2_weight_decay=best_config['wd'],
+        loss_function=best_config['loss'],
+        dropout_rate=best_config['dropout'],
+    )
+    model.train(dm.TrainingData, epochs=3, batch_size=8, save_interval=2, save_best=True, load_best=True)
     
     
     print("\nTest 5: Testing model predictions...")
@@ -702,43 +580,6 @@ if __name__ == "__main__":
     print(f"\nLoaded model from epoch {start_epoch} with best loss: {best_loss:.4f}")
     model.model.eval()
 
-    # Direct model loading - bypass ModelManager if we not train the model as the loadmodel is work only if we train the model
-    # uncomment to get the predict csv file
-    
-    """
-    model_path = os.path.join(model_dir, "EfficientNet_best.pth")
-    if os.path.exists(model_path):
-        try:
-            print(f"Try to load model directly from {model_path}")
-            checkpoint = torch.load(model_path, map_location=model.device)
-            
-            if 'model_state_dict' in checkpoint:
-                model.model.load_state_dict(checkpoint['model_state_dict'])
-                print(f"Successfully loaded model weights from {model_path}")
-                
-                # Debug cause wtf is not working with otehr loading method
-                print(f"Checkpoint contains keys: {list(checkpoint.keys())}")
-                if 'epoch' in checkpoint:
-                    print(f"Model was trained for {checkpoint['epoch']} epochs")
-                if 'loss' in checkpoint:
-                    print(f"Model achieved loss of {checkpoint['loss']:.4f}")
-            else:
-                print(f"Error: Checkpoint doesn't contain model_state_dict")
-        except Exception as e:
-            print(f"Error loading model: {str(e)}")
-            print("Continuing with initialized model weights...")
-    else:
-        print(f"Warning: Model file not found at {model_path}")
-        print("Available files in model directory:")
-        try:
-            print(os.listdir(model_dir))
-        except:
-            print("Could not list directory contents")
-    """
-
-    """
-    model.model.eval()
-
     test_predictions = model.predict(dm.TestData["image"])
 
     result_df = pd.DataFrame({
@@ -747,10 +588,8 @@ if __name__ == "__main__":
     })
     result_df.to_csv("test_predictions.csv", index=False)
     print("Predictions saved to test_predictions.csv")
-    """
+    
 
-    ## test predict with the batch of images from the training data
-    """
     print("\nTest 6: Testing model predictions on a batch of training data...")
     num_images = 50
     test_batch = dm.TrainingData.sample(num_images)
@@ -795,9 +634,7 @@ if __name__ == "__main__":
     correct = sum(1 for a, p in zip(test_batch["label"], predicted_labels) if a == p)
     accuracy = 100 * correct / len(test_batch["label"])
     print(f"Batch test accuracy: {accuracy:.2f}%")
-    """
-
-    """
+    
     print("Test 7: Predict/Actual of Whole Training Data + Accuracy")
     predicted_labels = model.predict(dm.TrainingData["image"])
     correct = sum(1 for a, p in zip(dm.TrainingData["label"], predicted_labels) if a == p)
@@ -806,4 +643,3 @@ if __name__ == "__main__":
     
     print("Done")
     print("="*50)
-    """
