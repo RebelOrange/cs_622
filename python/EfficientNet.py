@@ -341,7 +341,7 @@ if __name__ == "__main__":
     print("Test 1: Loading training data...")
     dm = DataManager()
     current_folder = os.getcwd()
-    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=7000)
+    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=16*16)
     
     print("Test 2: Preprocessing data...")
     dm.RemoveMissingData()
@@ -363,10 +363,15 @@ if __name__ == "__main__":
     # might need to do split data or cross validation to get better results? 
     
     print("Test 4: Training model...")
-    model.Train(dm.TrainingData, epochs=10, batch_size=16, save_interval=2, load_model=True)
+    model.Train(dm.TrainingData, epochs=50, batch_size=16, save_interval=2, load_model=True)
     
     print("Test 5: Testing batch prediction...")
-    test_batch = dm.TrainingData.sample(10)
+    """
+    dm.LoadTestData(folderName=current_folder+"/../data/", csvFileName="Testing_set.csv", numFiles=None)
+    dm.RemoveMissingData()
+    dm.ResizeImages(TargetSize=(224, 224))
+    dm.NormalizeImages()
+    test_batch = dm.TestData
     test_images = test_batch["image"]
     test_labels = test_batch["label"]
     predicted_labels = model.Predict(test_images)
@@ -381,3 +386,4 @@ if __name__ == "__main__":
     correct = sum(1 for a, p in zip(test_labels, predicted_labels) if a == p)
     accuracy = 100 * correct / len(test_labels)
     print(f"\nBatch accuracy: {accuracy:.2f}%")
+    """
