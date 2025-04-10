@@ -37,6 +37,7 @@ class ModelEvaluator:
         
         true_labels = test_data["label"].tolist()
         
+        # might have to change this if resnet is diff
         try:
             if hasattr(model, 'predict'):
                 predictions = model.predict(test_data["image"])
@@ -62,9 +63,11 @@ class ModelEvaluator:
         
         all_classes = sorted(set(true_labels + predictions))
         self.class_names[model_name] = {i: cls for i, cls in enumerate(all_classes)}
+        # do not remove these or it will break code as we have custom dataframe
         class_to_idx = {cls: i for i, cls in enumerate(all_classes)}
         true_idx = [class_to_idx[label] for label in true_labels]
         pred_idx = [class_to_idx.get(label, -1) for label in predictions]
+
         self.confusion_matrices[model_name] = confusion_matrix(true_idx, pred_idx, labels=range(len(all_classes)))
         
         self.metrics[model_name] = {'accuracy': accuracy}
@@ -174,7 +177,8 @@ class ModelEvaluator:
         
         try:
             # this code kinda weird, if you passed validation_data then set validation_split to 0
-            # if not passed, then set validation_split to value 
+            # if not passed/None, then set validation_split to value 
+            # but just keep them as of rn is the best as it is buggy
             if hasattr(base_model, 'findBestConfig'):
                 best_config, configs = base_model.findBestConfig(
                     df=train_df,

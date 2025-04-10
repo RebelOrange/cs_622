@@ -433,7 +433,6 @@ class EfficientNet(Model):
         return train_df, val_df
     
     def generateConfigs(self, max_configs=9, l2_values=None, dropout_values=None, loss_functions=None):
-        """Generate hyperparameter configurations efficiently without external libraries."""
         # Base options - can change if need but maybe dont
         optimizer_options = ['adam', 'sgd', 'adamw']
         lr_options = [0.01, 0.001, 0.0001]
@@ -569,6 +568,8 @@ if __name__ == "__main__":
     )
     model.train(train_val_df, epochs=3, batch_size=8, save_interval=2, save_best=False, load_best=False)
     
+    # uncomment to test predict but maybe dont as it take long time. This is just test, we will use the model eval file to do eval so code bellow 
+    # here can be removed but maybe keep it uncomment for now for sake of testing
     """
     print("\nTest 5: Testing model predictions...")
     # load testing data
