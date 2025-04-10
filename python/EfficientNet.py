@@ -169,7 +169,7 @@ class EfficientNet(Model):
         return df
     
     ######################## TRAINING FUNCTIONS ########################
-    def train(self, df, epochs=10, batch_size=32, save_interval=1, save_best=True, load_best=True):
+    def train(self, df, epochs=10, batch_size=32, save_interval=5, save_best=True, load_best=True):
         self.setupTraining(df)
         n_samples = len(df)
         indices = np.arange(n_samples)
@@ -356,11 +356,16 @@ class EfficientNet(Model):
         return accuracy
 
     def findBestConfig(self, df, validation_split=0.2, epochs=5, batch_size=32, max_configs=9, 
-                    l2_values=None, dropout_values=None, loss_functions=None):
+                    l2_values=None, dropout_values=None, loss_functions=None, validation_data=None):
         print("\nStarting tuning best configuration...")
         
-        train_df, val_df = self.splitData(df, validation_split)
-        print(f"\nSplit data: {len(train_df)} training samples, {len(val_df)} validation samples")
+        if validation_data is not None:
+            train_df = df
+            val_df = validation_data
+            print(f"\nUsing provided validation data: {len(train_df)} training samples, {len(val_df)} validation samples")
+        else:
+            train_df, val_df = self.splitData(df, validation_split)
+            print(f"\nSplit data: {len(train_df)} training samples, {len(val_df)} validation samples")
         
         configs = self.generateConfigs(
             max_configs=max_configs,
@@ -390,7 +395,7 @@ class EfficientNet(Model):
 
             self.model.train()
             for epoch in range(epochs):
-                self.trainEpoch(df, np.arange(len(df)), batch_size, (len(df) + batch_size - 1) // batch_size, track_metrics=False)
+                self.trainEpoch(train_df, np.arange(len(train_df)), batch_size, (len(train_df) + batch_size - 1) // batch_size, track_metrics=False)
 
             val_acc = self.evaluate(val_df, batch_size)
             
@@ -414,7 +419,7 @@ class EfficientNet(Model):
         )
         self.model.load_state_dict(best_model_state)
         
-        return best_config
+        return best_config, configs
     
     def splitData(self, df, validation_split):
         train_df, val_df = train_test_split(df, test_size=validation_split, random_state=42)
@@ -524,31 +529,32 @@ if __name__ == "__main__":
     dm = DataManager()
     current_folder = os.getcwd()
     
-    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=100)
+    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=50)
     dm.RemoveMissingData()
     
     print("Test 2: Creating model")
     num_classes = len(dm.TrainingData["label"].unique())
     model_dir = os.path.join(current_folder, "../models")
     os.makedirs(model_dir, exist_ok=True)
+    model = EfficientNet(num_classes=num_classes, variant='b0', model_dir=model_dir)
     
     print("Test 3: Finding optimal configuration")
-    model = EfficientNet(num_classes=num_classes, variant='b0', model_dir=model_dir)
-
     # test train/eval/test
     train_val_df, test_df = model.splitData(dm.TrainingData, validation_split=0.2)
-    train_df, val_df = model.splitData(train_val_df, validation_split=0.15)
     
-    print(f"Data split ratio - Train: {len(train_df)}/{len(dm.TrainingData)}, Validation: {len(val_df)}/{len(dm.TrainingData)}, Test: {len(test_df)}/{len(dm.TrainingData)}")
+    print(f"Data split ratio - Train+Val: {len(train_val_df)}/{len(dm.TrainingData)}, Test: {len(test_df)}/{len(dm.TrainingData)}")
 
-    best_config = model.findBestConfig(
-        df=train_df,
-        validation_split=0.2,
+    best_config, configs = model.findBestConfig(
+        df=train_val_df,
+        validation_split=0.15,
         epochs=3,
         batch_size=8,
         max_configs=2,
-        dropout_values=[0.0, 0.1, 0.2],
     )
+
+    #print("\n Configs list test: ")
+    #for config in configs:
+    #    print(config)
     
     print("Test 4: Training model with best configuration")
     model = EfficientNet(
@@ -561,7 +567,7 @@ if __name__ == "__main__":
         loss_function=best_config['loss'],
         dropout_rate=best_config['dropout'],
     )
-    model.train(train_df, epochs=3, batch_size=8, save_interval=2, save_best=False, load_best=False)
+    model.train(train_val_df, epochs=3, batch_size=8, save_interval=2, save_best=False, load_best=False)
     
     """
     print("\nTest 5: Testing model predictions...")
