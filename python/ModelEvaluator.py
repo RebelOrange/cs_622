@@ -336,7 +336,7 @@ if __name__ == "__main__":
         train_ratio=0.7,
         val_ratio=0.15,
         test_ratio=0.15,
-        max_configs=2,
+        max_configs=9,
         model_dir=model_dir,
         save_best=False, 
         load_best=False   
