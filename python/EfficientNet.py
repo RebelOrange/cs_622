@@ -289,19 +289,24 @@ class EfficientNet(Model):
             print(f"\nCheckpoint saved at epoch {epoch+1}")
 
     ######################## PREDICTION FUNCTIONS ########################
-    def predict(self, image=None):
+    def predict(self, image=None, return_proba=True):
         if image is None:
             return None
             
         self.model.eval()
-        return self.predictBatch(image) if isinstance(image, pd.Series) else self.predictSingle(image)
+        return self.predictBatch(image, return_proba) if isinstance(image, pd.Series) else self.predictSingle(image, return_proba)
 
-    def predictSingle(self, image):
+    def predictSingle(self, image, return_proba=True):
         with torch.no_grad():
             img_tensor = self.preprocessImages(image).unsqueeze(0).to(self.device)
             outputs = self.model(img_tensor)
-            
+
+            # do not remove these as it need for roc curve
             probabilities = torch.nn.functional.softmax(outputs, dim=1)
+            
+            if return_proba:
+                return probabilities.cpu().numpy()
+            
             _, predicted_idx = torch.max(outputs, 1)
             confidence = probabilities[0][predicted_idx.item()].item()
             predicted_label = self.idx_to_class[predicted_idx.item()]
@@ -309,17 +314,26 @@ class EfficientNet(Model):
             print(f"\nModel Predicted: {predicted_label} (confidence: {confidence:.2f})")
             return predicted_label
 
-    def predictBatch(self, images):
-        predictions = []
+    def predictBatch(self, images, return_proba=True):
+        all_results = []
         
         with torch.no_grad():
             for img in images:
                 img_tensor = self.preprocessImages(img).unsqueeze(0).to(self.device)
                 outputs = self.model(img_tensor)
-                _, predicted_idx = torch.max(outputs, 1)
-                predictions.append(self.idx_to_class[predicted_idx.item()])
                 
-        return predictions
+                if return_proba:
+                    probs = torch.nn.functional.softmax(outputs, dim=1)
+                    all_results.append(probs.cpu().numpy())
+                else:
+                    _, predicted_idx = torch.max(outputs, 1)
+                    all_results.append(self.idx_to_class[predicted_idx.item()])
+        
+        # If prob, stack them into a single array so that it can be used for roc curve
+        if return_proba and all_results:
+            return np.vstack(all_results)
+            
+        return all_results
     
     ######################## MODEL SAVING & LOADING ########################
     # do not remove these 2
@@ -374,12 +388,26 @@ class EfficientNet(Model):
             loss_functions=loss_functions
         )
         
+        # dont remove this as it need for the model eval or it will break the code
+        if not configs:
+            print("\nNo configurations were generated. Using current configuration.")
+            # Return the current configuration
+            current_config = {
+                'optimizer': self.optimizer_name,
+                'lr': self.learning_rate,
+                'wd': self.l2_weight_decay,
+                'loss': self.loss_function_name,
+                'dropout': self.dropout_rate
+            }
+            return current_config, [current_config]
+        
         if self.class_to_idx is None:
             self.setupClassMapping(df)
         
         results = []
         best_val_acc = 0
-        best_config, best_model_state = None, None
+        best_config = None
+        best_model_state = None
         
         self.printConfigHeader()
         
@@ -407,6 +435,13 @@ class EfficientNet(Model):
                 best_config = config
                 best_model_state = self.model.state_dict().copy()
         
+        # safeguard for reset so dont rm
+        if best_config is None:
+            print("\nWarning: No configuration improved performance. Using first configuration.")
+            best_config = configs[0]
+            best_val_acc = results[0]['val_acc'] if results else 0
+            best_model_state = None
+        
         self.printConfigSummary(results, best_config, best_val_acc)
 
         self.resetModel(
@@ -417,7 +452,9 @@ class EfficientNet(Model):
             loss_function=best_config['loss'],
             dropout_rate=best_config['dropout'],
         )
-        self.model.load_state_dict(best_model_state)
+        
+        if best_model_state is not None:
+            self.model.load_state_dict(best_model_state)
         
         return best_config, configs
     
@@ -566,11 +603,30 @@ if __name__ == "__main__":
         loss_function=best_config['loss'],
         dropout_rate=best_config['dropout'],
     )
-    model.train(train_val_df, epochs=3, batch_size=8, save_interval=2, save_best=False, load_best=False)
+    model.train(train_val_df, epochs=3, batch_size=8, save_interval=5, save_best=False, load_best=False)
     
-    # uncomment to test predict but maybe dont as it take long time. This is just test, we will use the model eval file to do eval so code bellow 
-    # here can be removed but maybe keep it uncomment for now for sake of testing
+    # The rest of the testing code can be uncommented if needed
     """
+    # Test the new prediction interface
+    print("\nTest 5: Testing new prediction interface")
+    if len(dm.TrainingData) > 0:
+        # Test single image prediction
+        sample_image = dm.TrainingData["image"].iloc[0]
+        sample_label = model.predict(sample_image)
+        print(f"Sample prediction: {sample_label}")
+        
+        # Test probability prediction
+        sample_probs = model.predict(sample_image, return_proba=True)
+        print(f"Sample probabilities shape: {sample_probs.shape}")
+        print(f"Top probability: {np.max(sample_probs):.4f}")
+        
+        # Test batch prediction
+        small_batch = dm.TrainingData.iloc[:3]["image"]
+        batch_labels = model.predict(small_batch)
+        batch_probs = model.predict(small_batch, return_proba=True)
+        print(f"Batch predictions: {batch_labels}")
+        print(f"Batch probabilities shape: {batch_probs.shape}")
+    
     print("\nTest 5: Testing model predictions...")
     # load testing data
     dm.LoadTestData(folderName=current_folder+"/../data/", csvFileName="Testing_set.csv")
@@ -627,7 +683,7 @@ if __name__ == "__main__":
     for i in range(num_images, len(axes_flat)):
         axes_flat[i].axis('off')
     
-    plt.tight_layout()
+    plt.tight_layout
     plt.suptitle(f"Model Predictions on {num_images} Test Images", fontsize=16)
     plt.subplots_adjust(top=0.9)
     plt.show()
