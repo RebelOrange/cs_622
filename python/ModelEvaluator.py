@@ -690,7 +690,8 @@ class ModelEvaluator:
                 self.plotConfusionMatrix(model_name, save_path=save_path, save_csv=save_csv)
                 
         print(f"All confusion matrices exported to {output_dir}")
-        
+    
+    # not work
     def exportTestResults(self, output_path):
         if not self.metrics:
             print("No model metrics available. Run evaluateModel() first.")
@@ -768,20 +769,20 @@ if __name__ == "__main__":
     if result_matrix is not None and not result_matrix.empty:
         best_model = result_matrix.loc[result_matrix['Accuracy'].idxmax(), 'Model']
         print(f"\nPlotting ROC curve for best model: {best_model}")
-        evaluator.plotROCCurve(best_model, save_path=output_dir, save_csv=True)
+        evaluator.plotROCCurve(best_model, save_path=output_dir, save_csv=False)
         
         # Plot confusion matrix for the best model
         print(f"\nPlotting confusion matrix for best model: {best_model}")
-        evaluator.plotConfusionMatrix(best_model, save_path=output_dir, save_csv=True)
+        evaluator.plotConfusionMatrix(best_model, save_path=output_dir, save_csv=False)
     # Compare all model variants using ROC curves
     if len(evaluator.models) > 1:
         # Compare all variants of EfficientNet
         print("\nComparing all EfficientNet variants:")
-        evaluator.compareModelTypeVariants("EfficientNet", save_path=output_dir, save_csv=True)
+        evaluator.compareModelTypeVariants("EfficientNet", save_path=output_dir, save_csv=False)
         
         # Automatic detection of model types for comparison
         print("\nComparing best variant of each detected model type:")
-        evaluator.compareBestAcrossModelTypes(save_path=output_dir, save_csv=True)
+        evaluator.compareBestAcrossModelTypes(save_path=output_dir, save_csv=False)
         
         # compare ResNet variants (todo)
         
@@ -792,8 +793,8 @@ if __name__ == "__main__":
     print("\n" + "="*70)
     print("Test 5: Exporting confusion matrices and test results")
     print("="*70)
-    evaluator.exportAllConfusionMatrices(output_dir, save_csv=True)
-    evaluator.exportTestResults(os.path.join(output_dir, "test_results.csv"))
+    evaluator.exportAllConfusionMatrices(output_dir, save_csv=False)
+   # evaluator.exportTestResults(os.path.join(output_dir, "test_results.csv"))
 
     print("\n" + "="*70)
     print("ModelEvaluator tests completed")
