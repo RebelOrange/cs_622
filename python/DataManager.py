@@ -22,17 +22,23 @@ class DataManager:
         pass
 
     ############################# data loading methods ###############################################
-    def LoadData(self, folder_name, csv_filename, subfolder, num_files=None):
+    def LoadData(self, folder_name, csv_filename, subfolder, num_files=None, classFilter: list[str] = None):
         # Read image csv
         if num_files is None:
             data = pd.read_csv(folder_name + csv_filename)
         else:
             data = pd.read_csv(folder_name + csv_filename, nrows=num_files)
 
+        if classFilter is not None:
+            data = data[data["label"].isin(classFilter)]
+            print(f"Filtered data to only include classes: {classFilter}")
+            print(f"Unique classes: {data['label'].unique()}")
+
         # Load files into dataframe with a new column for path
         loaded_files = 0
         missing_files = 0
-        for i in range(len(data)):
+        for n in range(len(data)):
+            i = data.index[n]
             filepath = folder_name + "//" + subfolder + "//" + data.loc[i, "filename"]
             data.loc[i, "path"] = filepath
             try:
@@ -42,20 +48,20 @@ class DataManager:
                 image = DataFrameImage()
                 missing_files += 1
             data.loc[i, "image"] = image
-            if i % 1000 == 0:
+            if n % 1000 == 0:
                 print(f"Loaded {i} files...")
 
         print(f"Loaded {loaded_files} files, {missing_files} files were missing.")
     
         return data
     
-    def LoadTrainingData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None):
-        self.TrainingData = self.LoadData(folderName, csvFileName, "train", numFiles)
+    def LoadTrainingData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None, classFilter: list[str] = None):
+        self.TrainingData = self.LoadData(folderName, csvFileName, "train", numFiles, classFilter=classFilter)
         pass
     
     ## maybe better to merge this and above together to avoid code duplication
-    def LoadTestData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None):
-        self.TestData = self.LoadData(folderName, csvFileName, "test", numFiles)
+    def LoadTestData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None,  classFilter: list[str] = None):
+        self.TestData = self.LoadData(folderName, csvFileName, "test", numFiles, classFilter=classFilter)
         pass
 
     def RemoveMissingData(self):
