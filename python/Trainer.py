@@ -15,8 +15,53 @@ def WriteCsv(data, csv_file_name):
         for row in data:
             writer.writerow(row)
 
+
+def PlotTrainingProgress(main_csv, additional_csvs, save_plot=False):
+    """
+    Plot the training progress for the ResNet model by combining data across multiple training phases.
+
+    Parameters:
+    1. main_csv (str): The path to the first CSV file (e.g., ResNet_Training_90_stats.csv).
+    2. additional_csvs (list of str): Paths to other CSV files generated during additional training phases.
+    3. save_plot (bool): If True, saves the plot as a PNG file, otherwise displays it.
+    """
+    # Read the main CSV file
+    main_data = pd.read_csv(main_csv)
+    main_epochs = main_data["Epoch"].tolist()
+    last_epoch = main_epochs[-1]
+
+    # Initialize plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(main_epochs, main_data["Accuracy"], label="Main Run Accuracy", color="blue")
+    #plt.plot(main_epochs, main_data["Loss"], label="Main Run Loss", color="red", linestyle="--")
+
+    # Process additional CSV files
+    for csv_file in additional_csvs:
+        additional_data = pd.read_csv(csv_file)
+        additional_epochs = [epoch + last_epoch for epoch in additional_data["Epoch"]]
+        #last_epoch = additional_epochs[-1]  # Update last_epoch after processing each file
+        plt.plot(additional_epochs, additional_data["Accuracy"], label=f"{csv_file} Accuracy", linestyle="--")
+        #plt.plot(additional_epochs, additional_data["Loss"], label=f"{csv_file} Loss", linestyle=":")
+
+    # Customize and display/save the plot
+    plt.xlabel("Epochs")
+    plt.ylabel("Metrics")
+    plt.title("ResNet Training Progress")
+    plt.legend()
+    if save_plot:
+        plt.savefig("Training_Progress.png")
+    else:
+        plt.show()
+
+
 if __name__ == "__main__":
 
+    # Plot training stats from CSV files
+    main_training_csv = "ResNet_Training_90_stats.csv"
+    additional_training_csvs = [f"ResNet_Training_{lr}_stats.csv" for lr in [0.0001, 0.001, 0.01, 0.1]]
+    PlotTrainingProgress(main_training_csv, additional_training_csvs, save_plot=True)
+
+    """
     print("########################### Loading training data... #################################")
     dm = DataManager()
     current_folder = os.getcwd()
@@ -68,6 +113,8 @@ if __name__ == "__main__":
         csv_file_name = f"ResNet_Training_{learning_rate}_stats.csv"
         WriteCsv(stats, csv_file_name)
 
+    """
+    
     
 
 
