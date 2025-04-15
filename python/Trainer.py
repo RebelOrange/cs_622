@@ -1,15 +1,121 @@
 import pandas as pd
-from DataManager import DataFrameImage
+from DataManager import *
+import matplotlib.pyplot as plt
+from NNModel import NNModel
+import csv
 
-class Trainer:
-    def __init__(self):
-        pass
 
-    def Train(self, image: DataFrameImage, label: str, model = None):
-        pass
+def WriteCsv(data, csv_file_name):
+    """Save training statistics to a CSV file."""
+    with open(csv_file_name, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        # Write header
+        writer.writerow(["Epoch", "Time", "Loss", "Accuracy"])
+        # Write each row of data
+        for row in data:
+            writer.writerow(row)
 
-    def TrainAll(self, df: pd.DataFrame(), model = None):
 
-        for i in range(len(df)):
-            self.Train(df.iloc[i, "image"].image, df.iloc[i, "label"], model)
+def PlotTrainingProgress(main_csv, additional_csvs, save_plot=False):
+    """
+    Plot the training progress for the ResNet model by combining data across multiple training phases.
+
+    Parameters:
+    1. main_csv (str): The path to the first CSV file (e.g., ResNet_Training_90_stats.csv).
+    2. additional_csvs (list of str): Paths to other CSV files generated during additional training phases.
+    3. save_plot (bool): If True, saves the plot as a PNG file, otherwise displays it.
+    """
+    # Read the main CSV file
+    main_data = pd.read_csv(main_csv)
+    main_epochs = main_data["Epoch"].tolist()
+    last_epoch = main_epochs[-1]
+
+    # Initialize plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(main_epochs, main_data["Accuracy"], label="Main Run Accuracy", color="blue")
+    #plt.plot(main_epochs, main_data["Loss"], label="Main Run Loss", color="red", linestyle="--")
+
+    # Process additional CSV files
+    for csv_file in additional_csvs:
+        additional_data = pd.read_csv(csv_file)
+        additional_epochs = [epoch + last_epoch for epoch in additional_data["Epoch"]]
+        #last_epoch = additional_epochs[-1]  # Update last_epoch after processing each file
+        plt.plot(additional_epochs, additional_data["Accuracy"], label=f"{csv_file} Accuracy", linestyle="--")
+        #plt.plot(additional_epochs, additional_data["Loss"], label=f"{csv_file} Loss", linestyle=":")
+
+    # Customize and display/save the plot
+    plt.xlabel("Epochs")
+    plt.ylabel("Metrics")
+    plt.title("ResNet Training Progress")
+    plt.legend()
+    if save_plot:
+        plt.savefig("Training_Progress.png")
+    else:
+        plt.show()
+
+
+if __name__ == "__main__":
+
+    # Plot training stats from CSV files
+    main_training_csv = "ResNet_Training_90_stats.csv"
+    additional_training_csvs = [f"ResNet_Training_{lr}_stats.csv" for lr in [0.0001, 0.001, 0.01, 0.1]]
+    PlotTrainingProgress(main_training_csv, additional_training_csvs, save_plot=True)
+
+    """
+    print("########################### Loading training data... #################################")
+    dm = DataManager()
+    current_folder = os.getcwd()
+    classes = ["sitting", "running", "drinking","eating"]
+    dm.LoadTrainingData(folderName=current_folder + "/../data/", csvFileName="Training_set.csv", numFiles=None, classFilter=classes)
+
+    print("####################### Preprocessing data... #######################################")
+    dm.RemoveMissingData()
+    # maybe using tranformations from pytorch could be better?? if so maybe we can do that in preprocess()
+    dm.ResizeImages(TargetSize=(224, 224))
+    dm.NormalizeImages()
+
+    print("####################### Configure Models #######################################")
+    num_classes = len(dm.TrainingData["label"].unique())
+    model_dir = os.path.join(current_folder, "../models/Training")
+    os.makedirs(model_dir, exist_ok=True)
+
+    modelType = "ResNet"
+    print(f"Test 3: Initializing {modelType} model...")
+    ResNet = NNModel(num_classes=num_classes, variant='b0', model_dir=model_dir, modelType=modelType, optimizer="Adam",
+                    learningRate=0.001)
+    ResNet.Preprocess(dm.TrainingData)
+
+    modelType = "EfficientNet"
+    print(f"Test 3: Initializing {modelType} model...")
+    EffNet = NNModel(num_classes=num_classes, variant='b0', model_dir=model_dir, modelType=modelType, optimizer="Adam",
+                    learningRate=0.001)
+    EffNet.Preprocess(dm.TrainingData)
+
+    print("########################### Initial Training ###################################")
+    print("Training to 90% accuracy with Adam 0.1 learning rate...")
+    ResNetStats = ResNet.Train(dm.TrainingData, epochs=30, batch_size=32, save_interval=1, load_model=False, save_model=True, target_accuracy=90)
+
+    csv_file_name = f"ResNet_Training_90_stats.csv"
+    WriteCsv(ResNetStats, csv_file_name)
+    print("########################### Final Training #####################################")
+    ResNetStatsFinal = {}
+    learning_rates = [0.0001,0.001, 0.01, 0.1]
+    n_epochs = 25
+
+    
+    for learning_rate in learning_rates:
+        print(f"Training {n_epochs} epochs or 100% accuracy with Adam {learning_rate} learning rate...")
+        ResNet.SetOptimizer(optimizer="Adam", learningRate=learning_rate)
+        stats = ResNet.Train(dm.TrainingData, epochs=n_epochs, batch_size=32, save_interval=1, load_model=True, save_model=False, target_accuracy=100)
+        ResNetStatsFinal[learning_rate] = stats
+    
+        # Write stats to CSV
+        csv_file_name = f"ResNet_Training_{learning_rate}_stats.csv"
+        WriteCsv(stats, csv_file_name)
+
+    """
+    
+    
+
+
 
