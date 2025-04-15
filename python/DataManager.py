@@ -44,7 +44,8 @@ class DataManager:
             data.loc[i, "image"] = image
 
         print(f"Loaded {loaded_files} files, {missing_files} files were missing.")
-    
+
+        self.TrainingData = data
         return data
     
     def LoadTrainingData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None):
