@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import sys
 import matplotlib.pyplot as plt
+import math
 
     #from timer.Timer import Timer
 
@@ -19,6 +20,24 @@ class DataManager:
     def __init__(self):
         self.TrainingData = pd.DataFrame()
         self.TestData = pd.DataFrame()
+
+        #individual data frames for the actions.
+        self.CallingSet = pd.DataFrame
+        self.ClappingSet = pd.DataFrame
+        self.CyclingSet  = pd.DataFrame
+        self.DancingSet = pd.DataFrame
+        self.DrinkingSet = pd.DataFrame
+        self.EatingSet = pd.DataFrame
+        self.FightingSet = pd.DataFrame
+        self.HuggingSet = pd.DataFrame
+        self.LaughingSet = pd.DataFrame
+        self.Listening_to_musicSet = pd.DataFrame
+        self.RunningSet = pd.DataFrame
+        self.SittingSet  = pd.DataFrame
+        self.SleepingSet = pd.DataFrame
+        self.TextingSet = pd.DataFrame
+        self.Using_laptopSet = pd.DataFrame
+        self.LabelSet = []
         pass
 
     ############################# data loading methods ###############################################
@@ -44,8 +63,162 @@ class DataManager:
             data.loc[i, "image"] = image
 
         print(f"Loaded {loaded_files} files, {missing_files} files were missing.")
-    
+
+        #'calling' 'clapping' 'cycling' 'dancing' 'drinking' 'eating' 'fighting'
+        #'hugging' 'laughing' 'listening_to_music' 'running' 'sitting' 'sleeping'
+        #'texting' 'using_laptop'
+
+        # Add in a class filter into the datamanager so we can select a list of classes
+        # (["sitting","standing",...]). Plan on taking all 840 images of the class
+        # so its easier to filter
+        #       Data is filtered upon calling LoadData, each set is in it's own self.LabelSet
+
+        # Filter data into individual sets, based on label, size are correct
+        self.CallingSet = data[data["label"] == 'calling']
+        self.ClappingSet = data[data["label"] == 'clapping']
+        self.CyclingSet = data[data["label"] == 'cycling']
+        self.DancingSet = data[data["label"] == 'dancing']
+        self.DrinkingSet = data[data["label"] == 'drinking']
+        self.EatingSet = data[data["label"] == 'eating']
+        self.FightingSet = data[data["label"] == 'fighting']
+        self.HuggingSet = data[data["label"] == 'hugging']
+        self.LaughingSet = data[data["label"] == 'laughing']
+        self.Listening_to_musicSet = data[data["label"] == 'listening_to_music']
+        self.RunningSet = data[data["label"] == 'running']
+        self.SittingSet = data[data["label"] == 'sitting']
+        self.SleepingSet = data[data["label"] == 'sleeping']
+        self.TextingSet = data[data["label"] == 'texting']
+        self.Using_laptopSet = data[data["label"] == 'using_laptop']
+
+        self.LabelSet = ['calling', 'clapping', 'cycling', 'dancing', 'drinking', 'eating', 'fighting',
+        'hugging', 'laughing', 'listening_to_music', 'running', 'sitting', 'sleeping',
+        'texting', 'using_laptop']
+
+        self.LabelDistroSet = [len(self.CallingSet), len(self.ClappingSet), len(self.CyclingSet),
+                               len(self.DancingSet),len(self.DrinkingSet), len(self.EatingSet),
+                               len(self.FightingSet), len(self.HuggingSet), len(self.LaughingSet),
+                               len(self.Listening_to_musicSet), len(self.RunningSet),
+                               len(self.SittingSet), len(self.SleepingSet), len(self.TextingSet),
+                               len(self.Using_laptopSet)]
+
         return data
+
+    def ReduceSetTo(self, reduceto: int = None):
+        if reduceto is None:
+            return
+
+        AmountWeWantToHave = math.floor(reduceto / 15)
+        ReduceAmount = len(self.CallingSet) - AmountWeWantToHave
+
+        print(self.LabelDistroSet)
+
+        for elements in self.LabelDistroSet:
+            if elements < ReduceAmount:
+                print ("Reducing this amount will delete all data points in a certain label,"
+                       " try again with a higher value")
+                return
+
+        if ReduceAmount < 0:
+            print ("Can not reduce by negative amounts")
+            return
+
+        # method to reduce the size of the individual sets.
+        # N can be changed to increase the number of removed data points
+        # 1
+        n = ReduceAmount
+        drop_indices = self.CallingSet.sample(n).index
+        temp_df = self.CallingSet.drop(drop_indices)
+        self.CallingSet = temp_df
+        print(len(self.CallingSet))
+
+        # 2
+        drop_indices = self.ClappingSet.sample(n).index
+        temp_df = self.ClappingSet.drop(drop_indices)
+        self.ClappingSet = temp_df
+
+        # 3
+        drop_indices = self.CyclingSet.sample(n).index
+        temp_df = self.CyclingSet.drop(drop_indices)
+        self.CyclingSet = temp_df
+
+        # 4
+        drop_indices = self.DancingSet.sample(n).index
+        temp_df = self.DancingSet.drop(drop_indices)
+        self.DancingSet = temp_df
+
+        # 5
+        drop_indices = self.DrinkingSet.sample(n).index
+        temp_df = self.DrinkingSet.drop(drop_indices)
+        self.DrinkingSet = temp_df
+
+        # 6
+        drop_indices = self.EatingSet.sample(n).index
+        temp_df = self.EatingSet.drop(drop_indices)
+        self.EatingSet = temp_df
+
+        # 7
+        drop_indices = self.FightingSet.sample(n).index
+        temp_df = self.FightingSet.drop(drop_indices)
+        self.FightingSet = temp_df
+
+        # 8
+        drop_indices = self.HuggingSet.sample(n).index
+        temp_df = self.HuggingSet.drop(drop_indices)
+        self.HuggingSet = temp_df
+
+        # 9
+        drop_indices = self.LaughingSet.sample(n).index
+        temp_df = self.LaughingSet.drop(drop_indices)
+        self.LaughingSet = temp_df
+
+        # 10
+        drop_indices = self.Listening_to_musicSet.sample(n).index
+        temp_df = self.Listening_to_musicSet.drop(drop_indices)
+        self.Listening_to_musicSet = temp_df
+
+        # 11
+        drop_indices = self.RunningSet.sample(n).index
+        temp_df = self.RunningSet.drop(drop_indices)
+        self.RunningSet = temp_df
+
+        # 12
+        drop_indices = self.SittingSet.sample(n).index
+        temp_df = self.SittingSet.drop(drop_indices)
+        self.SittingSet = temp_df
+
+        # 13
+        drop_indices = self.SleepingSet.sample(n).index
+        temp_df = self.SleepingSet.drop(drop_indices)
+        self.SleepingSet = temp_df
+
+        # 14
+        drop_indices = self.TextingSet.sample(n).index
+        temp_df = self.TextingSet.drop(drop_indices)
+        self.TextingSet = temp_df
+
+        # 15
+        drop_indices = self.Using_laptopSet.sample(n).index
+        temp_df = self.Using_laptopSet.drop(drop_indices)
+        self.Using_laptopSet = temp_df
+
+        self.LabelDistroSet = [len(self.CallingSet), len(self.ClappingSet), len(self.CyclingSet),
+                               len(self.DancingSet),len(self.DrinkingSet), len(self.EatingSet),
+                               len(self.FightingSet), len(self.HuggingSet), len(self.LaughingSet),
+                               len(self.Listening_to_musicSet), len(self.RunningSet),
+                               len(self.SittingSet), len(self.SleepingSet), len(self.TextingSet),
+                               len(self.Using_laptopSet)]
+
+        print(self.LabelDistroSet)
+
+        newdf = pd.concat([self.CallingSet, self.ClappingSet, self.CyclingSet,
+                               self.DancingSet, self.DrinkingSet, self.EatingSet,
+                               self.FightingSet, self.HuggingSet, self.LaughingSet,
+                               self.Listening_to_musicSet, self.RunningSet,
+                               self.SittingSet, self.SleepingSet, self.TextingSet,
+                               self.Using_laptopSet], ignore_index=True)
+        print(newdf.shape)
+
+        pass
     
     def LoadTrainingData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None):
         self.TrainingData = self.LoadData(folderName, csvFileName, "train", numFiles)
@@ -89,7 +262,7 @@ class DataManager:
 
         pass
 
-    def ResizeImages(self, TargetSize=(256,256)):
+    def ResizeImages(self, TargetSize=(160,160)):
         # resize all images to the target size
         for image in self.TrainingData["image"]:
             image.image = np.array(Image.fromarray(image.image).resize(TargetSize))
@@ -121,9 +294,9 @@ class DataManager:
         # print stats of dataset
         print("Training Data Stats:")
         print("Describe Data:")
-        print(self.TrainingData.describe())
+        #print(self.TrainingData.describe())
         print("\nInfo:")
-        print(self.TrainingData.info())
+        #print(self.TrainingData.info())
 
         # Print label distribution
         label_counts = self.TrainingData['label'].value_counts()
@@ -131,6 +304,9 @@ class DataManager:
         print(label_counts)
 
         # potentially plot some stats
+        #pie chart
+        plt.pie(self.LabelDistroSet, labels=self.LabelSet, autopct='%1.1f%%')
+        plt.title("Distribution of Labels in Dataset")
 
         # 1st: Visualize label distribution
         plt.figure(figsize=(12, 6))
@@ -140,6 +316,8 @@ class DataManager:
         plt.ylabel("Count")
         plt.tight_layout()
         plt.show()
+
+        #printing distributions
 
         pass
 
@@ -178,41 +356,44 @@ if __name__ == "__main__":
     currentFolder = os.getcwd()
     print("Current folder: ", currentFolder)
     t.start()
-    dm.LoadTrainingData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=1000)
+    dm.LoadTrainingData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=None)
     t.stop()
 
     #print(dm.TrainingData.head())
     #print(dm.TrainingData.describe())
     #print(dm.TrainingData.info())
 
-    print("\nTest 2: Print stats...")
+    #print("\nTest 2: Print stats...")
+    #t.start()
+    #dm.PrintStats()
+    #t.stop()
+
+    #print("\nTest 3: remove missing data...")
+    #t.start()
+    #dm.RemoveMissingData()
+    #t.stop()
+
+    #print("\nTest 4: Resize images...")
+    #t.start()
+    #dm.ResizeImages()
+    #t.stop()
+
+    #print("\nTest 5: convert images to grayscale...")
+    #t.start()
+    #dm.ConvertToGrayScale()
+    #t.stop()
+
+    #print("\nTest 7: Norm imgs...")
+    #t.start()
+    #dm.NormalizeImages()
+    #t.stop()
+
+    #print("\nTest 8: show random images...")
+    #t.start()
+    #dm.ShowRandomImages(numImages=5, showGrayscale=False, showSegmented=True)
+    #t.stop()
+
+    print("Test 8: reduce list")
     t.start()
-    dm.PrintStats()
+    dm.ReduceSetTo(300)
     t.stop()
-
-    print("\nTest 3: remove missing data...")
-    t.start()
-    dm.RemoveMissingData()
-    t.stop()
-
-    print("\nTest 4: Resize images...")
-    t.start()
-    dm.ResizeImages()
-    t.stop()
-
-    print("\nTest 5: convert images to grayscale...")
-    t.start()
-    dm.ConvertToGrayScale()
-    t.stop()
-
-    print("\nTest 7: Norm imgs...")
-    t.start()
-    dm.NormalizeImages()
-    t.stop()
-
-    print("\nTest 8: show random images...")
-    t.start()
-    dm.ShowRandomImages(numImages=5, showGrayscale=False, showSegmented=True)
-    t.stop()
-
-
