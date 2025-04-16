@@ -114,7 +114,7 @@ class ModelEvaluator:
 
     def evaluateModelVariants(self, modelClass, prefix, trainingData, numClasses=None, batchSize=32, numEpochs=5,
                                 trainRatio=0.7, valRatio=0.15, testRatio=0.15, maxConfigs=9, modelDir="models",
-                                saveBest=False, loadBest=False, savePath=None, saveCsv=False, modelType=None, variant=None):
+                                saveBest=False, loadBest=False, savePath=None, saveCsv=False, modelType=None, variant=None, targetAccuracy=None):
         
         trainDf, valDf, testDf = self.splitDataset(trainingData, trainRatio, valRatio, testRatio)
         
@@ -160,7 +160,8 @@ class ModelEvaluator:
                 if hasattr(model, 'train'):
                     epochStats = model.train(
                         df=trainDf, epochs=numEpochs, batchSize=batchSize,
-                        saveInterval=numEpochs, loadModel=resumeForAll, saveModel=saveBest
+                        saveInterval=numEpochs, loadModel=resumeForAll, saveModel=saveBest,
+                        targetAccuracy=targetAccuracy
                     )
                 
                 self.results[configName]['epochStats'] = epochStats if epochStats is not None else []
@@ -193,7 +194,7 @@ class ModelEvaluator:
         return resultMatrix
 
     def evaluateArchitectures(self, trainingData, architectures, modelDir="models", numEpochs=5, batchSize=32, maxConfigs=2,
-                                trainRatio=0.7, valRatio=0.15, testRatio=0.15, saveBest=False, loadBest=False, outputDir=None):
+                                trainRatio=0.7, valRatio=0.15, testRatio=0.15, saveBest=False, loadBest=False, outputDir=None, targetAccuracy=None):
         if outputDir is not None and not os.path.exists(outputDir):
             os.makedirs(outputDir)
         
@@ -232,7 +233,8 @@ class ModelEvaluator:
                 savePath=savePath,
                 saveCsv=True,
                 modelType=modelType,
-                variant=variant
+                variant=variant,
+                targetAccuracy=targetAccuracy
             )
             resultMatrices[f"{prefix}_{modelType or ''}_{variant or ''}".replace('__', '_')] = resultMatrix
         
@@ -726,6 +728,7 @@ if __name__ == "__main__":
         outputDir=os.path.join(outputDir, "architecture_comparison"),
         loadBest=True,
         saveBest=True,
+        targetAccuracy=90.0
     )
     
     print("\n" + "="*70)
