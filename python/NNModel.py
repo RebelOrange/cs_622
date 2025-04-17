@@ -213,7 +213,7 @@ class NNModel(Model):
         return df
 
     ################################ Training Methods #####################################
-    def Train(self, df, epochs=10, batch_size=32, save_interval=1, load_model=True, save_model=True, target_accuracy=100):
+    def Train(self, df, epochs=10, batch_size=32, save_interval=1, load_model=True, save_model=True, target_accuracy=100, show_epoch_stats=True):
         self.SetupTraining(df)
         n_samples = len(df)
         indices = np.arange(n_samples)
@@ -228,20 +228,24 @@ class NNModel(Model):
         else:
             best_loss = float('inf')
 
-        print(f"Starting training: {epochs} epochs, {n_samples} samples, {num_batches} batches per epoch")
+        if show_epoch_stats:
+            print(f"Starting training: {epochs} epochs, {n_samples} samples, {num_batches} batches per epoch")
     
         epoch_stats = []
 
         for epoch in range(epochs):
-            print(f"\nEpoch {epoch + 1}/{epochs}")
-            print("Progress: [", end="")
+            if show_epoch_stats:
+                print(f"\nEpoch {epoch + 1}/{epochs}")
+                print("Progress: [", end="")
 
             epoch_start_time = time.time()
             epoch_loss, epoch_acc = self.TrainEpoch(df, indices, batch_size, num_batches)
-            print("]")
+            if show_epoch_stats:
+                print("]")
 
             epoch_time = time.time() - epoch_start_time
-            self.DisplayEpoch(epoch, epochs, epoch_time, epoch_loss, epoch_acc)
+            if show_epoch_stats:
+                self.DisplayEpoch(epoch, epochs, epoch_time, epoch_loss, epoch_acc)
             
             epoch_stats.append([epoch + 1, epoch_time, epoch_loss, epoch_acc])
 
@@ -270,7 +274,7 @@ class NNModel(Model):
             self.SetupClassMapping(df)
         self.model.train()
 
-    def TrainEpoch(self, df, indices, batch_size, num_batches):
+    def TrainEpoch(self, df, indices, batch_size, num_batches, show_epoch_stats=True):
         n_samples = len(indices)
         running_loss = 0.0
         correct = 0
@@ -289,7 +293,8 @@ class NNModel(Model):
             total += batch_total
 
             current_batch = (i // batch_size) + 1
-            self.DisplayProcess(current_batch, num_batches)
+            if show_epoch_stats:
+                self.DisplayProcess(current_batch, num_batches)
 
         epoch_loss = running_loss / num_batches
         epoch_acc = 100 * correct / total if total > 0 else 0

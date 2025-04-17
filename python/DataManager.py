@@ -24,16 +24,24 @@ class DataManager:
     ############################# data loading methods ###############################################
     def LoadData(self, folder_name, csv_filename, subfolder, num_files=None, classFilter: list[str] = None):
         # Read image csv
-        if num_files is None:
-            data = pd.read_csv(folder_name + csv_filename)
-        else:
-            data = pd.read_csv(folder_name + csv_filename, nrows=num_files)
+        data = pd.read_csv(folder_name + csv_filename)
 
         if classFilter is not None:
             data = data[data["label"].isin(classFilter)]
             print(f"Filtered data to only include classes: {classFilter}")
             print(f"Unique classes: {data['label'].unique()}")
 
+        # select num_files of each class
+        filtered_df = pd.DataFrame()
+        for label in data["label"].unique():
+            if num_files is None:
+                continue
+            else:
+                filtered_df = pd.concat([filtered_df, data[data["label"] == label].head(num_files)])
+
+        del data
+        data = filtered_df
+        del filtered_df
         # Load files into dataframe with a new column for path
         loaded_files = 0
         missing_files = 0
@@ -187,10 +195,20 @@ if __name__ == "__main__":
     dm = DataManager()
     currentFolder = os.getcwd()
     print("Current folder: ", currentFolder)
+
+    classes = ["sitting", "running", "drinking","eating"]
     t.start()
-    dm.LoadTrainingData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=1000)
+    dm.LoadTrainingData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=100, classFilter=classes)
+    print("Training data loaded successfully.")
+    print("Number of training images: ", len(dm.TrainingData))
+    print("Number of classes: ", len(dm.TrainingData["label"].unique()))
+    print("Classes: ", dm.TrainingData["label"].unique())
+    print("Number of missing images: ", dm.TrainingData["image"].isnull().sum())
+    print("Number of valid images: ", dm.TrainingData["image"].notnull().sum())
+    print("Image size: ", dm.TrainingData["image"].iloc[0].image.shape)
     t.stop()
 
+    sys.exit()
     #print(dm.TrainingData.head())
     #print(dm.TrainingData.describe())
     #print(dm.TrainingData.info())
