@@ -32,16 +32,17 @@ class DataManager:
             print(f"Unique classes: {data['label'].unique()}")
 
         # select num_files of each class
-        filtered_df = pd.DataFrame()
-        for label in data["label"].unique():
-            if num_files is None:
-                continue
-            else:
-                filtered_df = pd.concat([filtered_df, data[data["label"] == label].head(num_files)])
+        if num_files is None:
+            pass
+        else:
+            filtered_df = pd.DataFrame()
+            for label in data["label"].unique():
+               filtered_df = pd.concat([filtered_df, data[data["label"] == label].head(num_files)])
 
-        del data
-        data = filtered_df
-        del filtered_df
+            del data
+            data = filtered_df
+            del filtered_df
+
         # Load files into dataframe with a new column for path
         loaded_files = 0
         missing_files = 0
@@ -207,6 +208,9 @@ if __name__ == "__main__":
     print("Number of valid images: ", dm.TrainingData["image"].notnull().sum())
     print("Image size: ", dm.TrainingData["image"].iloc[0].image.shape)
     t.stop()
+
+    for label in dm.TrainingData["label"].unique():
+        print(dm.TrainingData[dm.TrainingData["label"]==label].describe())
 
     sys.exit()
     #print(dm.TrainingData.head())
