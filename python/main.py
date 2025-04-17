@@ -1,7 +1,10 @@
 import os
 from DataManager import DataManager
 from NN_Model import NNModel
-from ModelEvaluator import ModelEvaluator, plotAllVariantsTrainingCurves
+from ModelEvaluator import ModelEvaluator
+from TrainingPlot import plotAllVariantsTrainingCurves
+from Trainer import WriteCsv
+import csv
 
 # ===================== GLOBAL CONFIGURATION =====================
 CURRENT_DIR = os.getcwd()
@@ -10,10 +13,10 @@ MODEL_DIR = os.path.join(CURRENT_DIR, "../models")
 OUTPUT_DIR = os.path.join(CURRENT_DIR, "../output")
 
 CLASSES = ["sitting", "running", "drinking", "eating"]
-NUM_FILES = 100
+NUM_FILES = 10
 NUM_EPOCHS = 3
 BATCH_SIZE = 8
-MAX_CONFIGS = 9
+MAX_CONFIGS = 3
 TRAIN_RATIO = 0.7
 VAL_RATIO = 0.15
 TEST_RATIO = 0.15
@@ -36,8 +39,8 @@ if __name__ == "__main__":
     evaluator = ModelEvaluator()
 
     architectures = [
-        {'class': NNModel, 'model_type': 'EfficientNet', 'variant': 'b0', 'prefix': 'NNEfficientNet'},
-        {'class': NNModel, 'model_type': 'ResNet', 'variant': '18', 'prefix': 'NNResNet'},
+        {'class': NNModel, 'model_type': 'EfficientNet', 'variant': 'b0', 'prefix': 'EfficientNet'},
+        {'class': NNModel, 'model_type': 'ResNet', 'variant': '18', 'prefix': 'ResNet'},
     ]
 
     results = evaluator.evaluateArchitectures(
@@ -82,8 +85,6 @@ if __name__ == "__main__":
         )
 
     print("\nSaving and plotting epoch stats for all models/configs...")
-    from Trainer import WriteCsv
-    import csv
     for modelName, model in evaluator.models.items():
         epochStats = None
         if modelName in evaluator.results and 'epochStats' in evaluator.results[modelName]:
