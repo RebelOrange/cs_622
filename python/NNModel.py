@@ -46,6 +46,9 @@ class NNModel(Model):
         self.idx_to_class = None
         self.modelType = modelType
         self.optimizerType = optimizer
+        self.variant = variant
+        self.model_dir = model_dir
+        self.num_classes = num_classes
 
         # Loss function for training
         # might need to change to determine the best loss function
@@ -56,40 +59,8 @@ class NNModel(Model):
         # b4/5 are like medium
         # b6/7 are like large
 
-        if modelType == "EfficientNet":
-            print(f"Loading EfficientNet-{variant} model...")
-            # Replace the deprecated pretrained=True with weights parameter
 
-            if variant == 'b0':
-                self.model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
-            elif variant == 'b1':
-                self.model = models.efficientnet_b1(weights=models.EfficientNet_B1_Weights.IMAGENET1K_V1)
-            elif variant == 'b4':
-                self.model = models.efficientnet_b4(weights=models.EfficientNet_B4_Weights.IMAGENET1K_V1)
-            elif variant == 'b5':
-                self.model = models.efficientnet_b5(weights=models.EfficientNet_B5_Weights.IMAGENET1K_V1)
-            elif variant == 'b6':
-                self.model = models.efficientnet_b6(weights=models.EfficientNet_B6_Weights.IMAGENET1K_V1)
-            elif variant == 'b7':
-                self.model = models.efficientnet_b7(weights=models.EfficientNet_B7_Weights.IMAGENET1K_V1)
-            else:
-                raise ValueError(f"Unsupported EfficientNet variant: {variant}")
-
-            num_features = self.model.classifier[1].in_features
-            # might need to adjust this as we can add like ReLU or other activation functions to the model
-            # to make it better
-            self.model.classifier[1] = nn.Sequential(
-                nn.Dropout(0.2),
-                # prevent overfitting? but then maybe we can add seperate func to deal with overfit? as it might be better to have it as a seperate func
-                nn.Linear(num_features, num_classes)  # classification layer
-            )
-        elif modelType == "ResNet":
-            print(f"Loading ResNet-{variant} model...")
-            self.model = models.resnet50(pretrained=True)
-        else:
-            print(f"Errror: Unknown modelType: {modelType}")
-            return
-
+        self.InitModel()
 
         self.transform = transforms.Compose([
             transforms.ToPILImage(),
@@ -114,7 +85,6 @@ class NNModel(Model):
         )
         """
 
-        self.model = self.model.to(self.device)
 
         # optimizer for training
         # might need to change to determine the best optimizer but use Adam for now
@@ -129,13 +99,59 @@ class NNModel(Model):
             self.optimizer = optim.Adam(self.model.parameters(), lr=learningRate)
             pass
 
-        self.model_dir = model_dir
+        self.ResetModel()
+
+    def ResetModel(self):
+        print("Resetting model...")
+        del self.model
+        self.InitModel()
         self.model_manager = ModelManager(
             model=self.model,
             optimizer=self.optimizer,
             device=self.device,
             model_dir=self.model_dir
         )
+
+
+    def InitModel(self):
+        print("Initializing model with parameters: ")
+        if self.modelType == "EfficientNet":
+            print(f"Loading EfficientNet-{self.variant} model...")
+            # Replace the deprecated pretrained=True with weights parameter
+
+            if self.variant == 'b0':
+                self.model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+            elif self.variant == 'b1':
+                self.model = models.efficientnet_b1(weights=models.EfficientNet_B1_Weights.IMAGENET1K_V1)
+            elif self.variant == 'b4':
+                self.model = models.efficientnet_b4(weights=models.EfficientNet_B4_Weights.IMAGENET1K_V1)
+            elif self.variant == 'b5':
+                self.model = models.efficientnet_b5(weights=models.EfficientNet_B5_Weights.IMAGENET1K_V1)
+            elif self.variant == 'b6':
+                self.model = models.efficientnet_b6(weights=models.EfficientNet_B6_Weights.IMAGENET1K_V1)
+            elif self.variant == 'b7':
+                self.model = models.efficientnet_b7(weights=models.EfficientNet_B7_Weights.IMAGENET1K_V1)
+            else:
+                raise ValueError(f"Unsupported EfficientNet variant: {self.variant}")
+
+            num_features = self.model.classifier[1].in_features
+            # might need to adjust this as we can add like ReLU or other activation functions to the model
+            # to make it better
+            self.model.classifier[1] = nn.Sequential(
+                nn.Dropout(0.2),
+                # prevent overfitting? but then maybe we can add seperate func to deal with overfit? as it might be better to have it as a seperate func
+                nn.Linear(num_features, self.num_classes)  # classification layer
+            )
+        elif self.modelType == "ResNet":
+            print(f"Loading ResNet-{self.variant} model...")
+            self.model = models.resnet18(pretrained=True)
+        else:
+            print(f"Errror: Unknown modelType: {self.modelType}")
+            return
+
+
+        self.model = self.model.to(self.device)
+
 
     ################################ Data Processing Methods ###################################
     def PreprocessImages(self, image):
@@ -263,8 +279,9 @@ class NNModel(Model):
             if epoch_acc >= target_accuracy:
                 print(f"Target accuracy reached: {target_accuracy}%")
                 est_loss = epoch_loss
-                self.SaveModel(epoch + 1, epoch_loss, self.modelType, best=True)
-                print(f"New best model saved with loss: {epoch_loss:.4f}")
+                if save_model:
+                    self.SaveModel(epoch + 1, epoch_loss, self.modelType, best=True)
+                    print(f"New best model saved with loss: {epoch_loss:.4f}")
                 break
                 
         return epoch_stats

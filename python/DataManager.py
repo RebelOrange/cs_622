@@ -64,8 +64,20 @@ class DataManager:
     
         return data
     
-    def LoadTrainingData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None, classFilter: list[str] = None):
-        self.TrainingData = self.LoadData(folderName, csvFileName, "train", numFiles, classFilter=classFilter)
+    def LoadTrainAndTestData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None, classFilter: list[str] = None, split: float = 0.8):
+        data = self.LoadData(folderName, csvFileName, "train", numFiles, classFilter=classFilter)
+        # get length of data
+        dummyLabel = data["label"].iloc[0]
+        dataLen = len(data[data["label"] == dummyLabel])
+        print("There are ", dataLen, " images per class.")
+
+        splitIndex = int(dataLen * split)
+        print(f"Splitting data at index: {splitIndex} ({split})")
+
+        for label in data["label"].unique():
+            self.TrainingData = pd.concat([self.TrainingData, data[data["label"] == label].head(splitIndex)])
+            self.TestData = pd.concat([self.TestData, data[data["label"]==label].tail(dataLen-splitIndex)])
+
         pass
     
     ## maybe better to merge this and above together to avoid code duplication
@@ -199,7 +211,7 @@ if __name__ == "__main__":
 
     classes = ["sitting", "running", "drinking","eating"]
     t.start()
-    dm.LoadTrainingData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=100, classFilter=classes)
+    dm.LoadTrainAndTestData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=100, classFilter=classes)
     print("Training data loaded successfully.")
     print("Number of training images: ", len(dm.TrainingData))
     print("Number of classes: ", len(dm.TrainingData["label"].unique()))
@@ -207,10 +219,12 @@ if __name__ == "__main__":
     print("Number of missing images: ", dm.TrainingData["image"].isnull().sum())
     print("Number of valid images: ", dm.TrainingData["image"].notnull().sum())
     print("Image size: ", dm.TrainingData["image"].iloc[0].image.shape)
+
+    print("Test Data length: ", len(dm.TestData[dm.TestData["label"]=="drinking"]))
+    print("Data split percentage: ", len(dm.TestData)/(len(dm.TrainingData)+len(dm.TestData)))
+
     t.stop()
 
-    for label in dm.TrainingData["label"].unique():
-        print(dm.TrainingData[dm.TrainingData["label"]==label].describe())
 
     sys.exit()
     #print(dm.TrainingData.head())
