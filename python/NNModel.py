@@ -145,6 +145,7 @@ class NNModel(Model):
         elif self.modelType == "ResNet":
             print(f"Loading ResNet-{self.variant} model...")
             self.model = models.resnet18(pretrained=True)
+            self.model.fc = nn.Linear(512, self.num_classes)
         else:
             print(f"Errror: Unknown modelType: {self.modelType}")
             return
@@ -255,13 +256,21 @@ class NNModel(Model):
                 print("Progress: [", end="")
 
             epoch_start_time = time.time()
-            epoch_loss, epoch_acc = self.TrainEpoch(df, indices, batch_size, num_batches)
+            epoch_loss, epoch_acc = self.TrainEpoch(df, indices, batch_size, num_batches, show_epoch_stats=show_epoch_stats)
             if show_epoch_stats:
                 print("]")
 
             epoch_time = time.time() - epoch_start_time
             if show_epoch_stats:
                 self.DisplayEpoch(epoch, epochs, epoch_time, epoch_loss, epoch_acc)
+
+            if epoch ==0:
+                remaining_epochs = epochs - (epoch + 1)
+                if remaining_epochs > 0:
+                    estimated_time = epoch_time * remaining_epochs
+                    hours, remainder = divmod(estimated_time, 3600)
+                    minutes, seconds = divmod(remainder, 60)
+                    print(f"Estimated Remaining Training Time: {int(hours)}h {int(minutes)}m {int(seconds)}s")
             
             epoch_stats.append([epoch + 1, epoch_time, epoch_loss, epoch_acc])
 
@@ -274,7 +283,8 @@ class NNModel(Model):
                     self.SaveModel(epoch + 1, epoch_loss, self.modelType, best=False)
                     print(f"No new best model. Checkpoint saved at epoch {epoch + 1}")
             else:
-                print("Save model not selected...")
+                if show_epoch_stats:
+                    print("Save model not selected...")
 
             if epoch_acc >= target_accuracy:
                 print(f"Target accuracy reached: {target_accuracy}%")
@@ -430,7 +440,7 @@ class NNModel(Model):
 
             predicted_label = self.idx_to_class[predicted_idx.item()]
 
-            print(f"Model Predicted: {predicted_label}")
+            #print(f"Model Predicted: {predicted_label}")
             return predicted_label
 
     def PredictBatch(self, images):
@@ -467,7 +477,7 @@ if __name__ == "__main__":
     dm = DataManager()
     current_folder = os.getcwd()
     classes = ["sitting", "running", "drinking","eating"]
-    dm.LoadTrainingData(folderName=current_folder + "/../data/", csvFileName="Training_set.csv", numFiles=None, classFilter=classes)
+    dm.LoadTrainAndTestData(folderName=current_folder + "/../data/", csvFileName="Training_set.csv", numFiles=100, classFilter=classes)
 
 
     print("Test 2: Preprocessing data...")
@@ -487,6 +497,7 @@ if __name__ == "__main__":
     print(f"Test 3: Initializing {modelType} model...")
     model = NNModel(num_classes=num_classes, variant='b0', model_dir=model_dir, modelType="ResNet", optimizer="Adam", learningRate=0.001)
     model.Preprocess(dm.TrainingData)  # preprocess the data again
+    model.SetOptimizer(optimizer="Adam", learningRate=0.001)
 
     # might need to do split data or cross validation to get better results?
 
@@ -499,11 +510,6 @@ if __name__ == "__main__":
     model.PlotEpochStats(epoch_stats)
     
     print("Test 6: Testing batch prediction...")
-    """
-    dm.LoadTestData(folderName=current_folder+"/../data/", csvFileName="Testing_set.csv", numFiles=None)
-    dm.RemoveMissingData()
-    dm.ResizeImages(TargetSize=(224, 224))
-    dm.NormalizeImages()
     test_batch = dm.TestData
     test_images = test_batch["image"]
     test_labels = test_batch["label"]
@@ -519,4 +525,3 @@ if __name__ == "__main__":
     correct = sum(1 for a, p in zip(test_labels, predicted_labels) if a == p)
     accuracy = 100 * correct / len(test_labels)
     print(f"\nBatch accuracy: {accuracy:.2f}%")
-    """
