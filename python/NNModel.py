@@ -46,6 +46,9 @@ class NNModel(Model):
         self.idx_to_class = None
         self.modelType = modelType
         self.optimizerType = optimizer
+        self.variant = variant
+        self.model_dir = model_dir
+        self.num_classes = num_classes
 
         # Loss function for training
         # might need to change to determine the best loss function
@@ -56,40 +59,8 @@ class NNModel(Model):
         # b4/5 are like medium
         # b6/7 are like large
 
-        if modelType == "EfficientNet":
-            print(f"Loading EfficientNet-{variant} model...")
-            # Replace the deprecated pretrained=True with weights parameter
 
-            if variant == 'b0':
-                self.model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
-            elif variant == 'b1':
-                self.model = models.efficientnet_b1(weights=models.EfficientNet_B1_Weights.IMAGENET1K_V1)
-            elif variant == 'b4':
-                self.model = models.efficientnet_b4(weights=models.EfficientNet_B4_Weights.IMAGENET1K_V1)
-            elif variant == 'b5':
-                self.model = models.efficientnet_b5(weights=models.EfficientNet_B5_Weights.IMAGENET1K_V1)
-            elif variant == 'b6':
-                self.model = models.efficientnet_b6(weights=models.EfficientNet_B6_Weights.IMAGENET1K_V1)
-            elif variant == 'b7':
-                self.model = models.efficientnet_b7(weights=models.EfficientNet_B7_Weights.IMAGENET1K_V1)
-            else:
-                raise ValueError(f"Unsupported EfficientNet variant: {variant}")
-
-            num_features = self.model.classifier[1].in_features
-            # might need to adjust this as we can add like ReLU or other activation functions to the model
-            # to make it better
-            self.model.classifier[1] = nn.Sequential(
-                nn.Dropout(0.2),
-                # prevent overfitting? but then maybe we can add seperate func to deal with overfit? as it might be better to have it as a seperate func
-                nn.Linear(num_features, num_classes)  # classification layer
-            )
-        elif modelType == "ResNet":
-            print(f"Loading ResNet-{variant} model...")
-            self.model = models.resnet50(pretrained=True)
-        else:
-            print(f"Errror: Unknown modelType: {modelType}")
-            return
-
+        self.InitModel()
 
         self.transform = transforms.Compose([
             transforms.ToPILImage(),
@@ -114,7 +85,6 @@ class NNModel(Model):
         )
         """
 
-        self.model = self.model.to(self.device)
 
         # optimizer for training
         # might need to change to determine the best optimizer but use Adam for now
@@ -129,13 +99,60 @@ class NNModel(Model):
             self.optimizer = optim.Adam(self.model.parameters(), lr=learningRate)
             pass
 
-        self.model_dir = model_dir
+        self.ResetModel()
+
+    def ResetModel(self):
+        print("Resetting model...")
+        del self.model
+        self.InitModel()
         self.model_manager = ModelManager(
             model=self.model,
             optimizer=self.optimizer,
             device=self.device,
             model_dir=self.model_dir
         )
+
+
+    def InitModel(self):
+        print("Initializing model with parameters: ")
+        if self.modelType == "EfficientNet":
+            print(f"Loading EfficientNet-{self.variant} model...")
+            # Replace the deprecated pretrained=True with weights parameter
+
+            if self.variant == 'b0':
+                self.model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+            elif self.variant == 'b1':
+                self.model = models.efficientnet_b1(weights=models.EfficientNet_B1_Weights.IMAGENET1K_V1)
+            elif self.variant == 'b4':
+                self.model = models.efficientnet_b4(weights=models.EfficientNet_B4_Weights.IMAGENET1K_V1)
+            elif self.variant == 'b5':
+                self.model = models.efficientnet_b5(weights=models.EfficientNet_B5_Weights.IMAGENET1K_V1)
+            elif self.variant == 'b6':
+                self.model = models.efficientnet_b6(weights=models.EfficientNet_B6_Weights.IMAGENET1K_V1)
+            elif self.variant == 'b7':
+                self.model = models.efficientnet_b7(weights=models.EfficientNet_B7_Weights.IMAGENET1K_V1)
+            else:
+                raise ValueError(f"Unsupported EfficientNet variant: {self.variant}")
+
+            num_features = self.model.classifier[1].in_features
+            # might need to adjust this as we can add like ReLU or other activation functions to the model
+            # to make it better
+            self.model.classifier[1] = nn.Sequential(
+                nn.Dropout(0.2),
+                # prevent overfitting? but then maybe we can add seperate func to deal with overfit? as it might be better to have it as a seperate func
+                nn.Linear(num_features, self.num_classes)  # classification layer
+            )
+        elif self.modelType == "ResNet":
+            print(f"Loading ResNet-{self.variant} model...")
+            self.model = models.resnet18(pretrained=True)
+            self.model.fc = nn.Linear(512, self.num_classes)
+        else:
+            print(f"Errror: Unknown modelType: {self.modelType}")
+            return
+
+
+        self.model = self.model.to(self.device)
+
 
     ################################ Data Processing Methods ###################################
     def PreprocessImages(self, image):
@@ -239,13 +256,21 @@ class NNModel(Model):
                 print("Progress: [", end="")
 
             epoch_start_time = time.time()
-            epoch_loss, epoch_acc = self.TrainEpoch(df, indices, batch_size, num_batches)
+            epoch_loss, epoch_acc = self.TrainEpoch(df, indices, batch_size, num_batches, show_epoch_stats=show_epoch_stats)
             if show_epoch_stats:
                 print("]")
 
             epoch_time = time.time() - epoch_start_time
             if show_epoch_stats:
                 self.DisplayEpoch(epoch, epochs, epoch_time, epoch_loss, epoch_acc)
+
+            if epoch ==0:
+                remaining_epochs = epochs - (epoch + 1)
+                if remaining_epochs > 0:
+                    estimated_time = epoch_time * remaining_epochs
+                    hours, remainder = divmod(estimated_time, 3600)
+                    minutes, seconds = divmod(remainder, 60)
+                    print(f"Estimated Remaining Training Time: {int(hours)}h {int(minutes)}m {int(seconds)}s")
             
             epoch_stats.append([epoch + 1, epoch_time, epoch_loss, epoch_acc])
 
@@ -258,13 +283,15 @@ class NNModel(Model):
                     self.SaveModel(epoch + 1, epoch_loss, self.modelType, best=False)
                     print(f"No new best model. Checkpoint saved at epoch {epoch + 1}")
             else:
-                print("Save model not selected...")
+                if show_epoch_stats:
+                    print("Save model not selected...")
 
             if epoch_acc >= target_accuracy:
                 print(f"Target accuracy reached: {target_accuracy}%")
                 est_loss = epoch_loss
-                self.SaveModel(epoch + 1, epoch_loss, self.modelType, best=True)
-                print(f"New best model saved with loss: {epoch_loss:.4f}")
+                if save_model:
+                    self.SaveModel(epoch + 1, epoch_loss, self.modelType, best=True)
+                    print(f"New best model saved with loss: {epoch_loss:.4f}")
                 break
                 
         return epoch_stats
@@ -413,7 +440,7 @@ class NNModel(Model):
 
             predicted_label = self.idx_to_class[predicted_idx.item()]
 
-            print(f"Model Predicted: {predicted_label}")
+            #print(f"Model Predicted: {predicted_label}")
             return predicted_label
 
     def PredictBatch(self, images):
@@ -450,7 +477,7 @@ if __name__ == "__main__":
     dm = DataManager()
     current_folder = os.getcwd()
     classes = ["sitting", "running", "drinking","eating"]
-    dm.LoadTrainingData(folderName=current_folder + "/../data/", csvFileName="Training_set.csv", numFiles=None, classFilter=classes)
+    dm.LoadTrainAndTestData(folderName=current_folder + "/../data/", csvFileName="Training_set.csv", numFiles=100, classFilter=classes)
 
 
     print("Test 2: Preprocessing data...")
@@ -470,6 +497,7 @@ if __name__ == "__main__":
     print(f"Test 3: Initializing {modelType} model...")
     model = NNModel(num_classes=num_classes, variant='b0', model_dir=model_dir, modelType="ResNet", optimizer="Adam", learningRate=0.001)
     model.Preprocess(dm.TrainingData)  # preprocess the data again
+    model.SetOptimizer(optimizer="Adam", learningRate=0.001)
 
     # might need to do split data or cross validation to get better results?
 
@@ -482,11 +510,6 @@ if __name__ == "__main__":
     model.PlotEpochStats(epoch_stats)
     
     print("Test 6: Testing batch prediction...")
-    """
-    dm.LoadTestData(folderName=current_folder+"/../data/", csvFileName="Testing_set.csv", numFiles=None)
-    dm.RemoveMissingData()
-    dm.ResizeImages(TargetSize=(224, 224))
-    dm.NormalizeImages()
     test_batch = dm.TestData
     test_images = test_batch["image"]
     test_labels = test_batch["label"]
@@ -502,4 +525,3 @@ if __name__ == "__main__":
     correct = sum(1 for a, p in zip(test_labels, predicted_labels) if a == p)
     accuracy = 100 * correct / len(test_labels)
     print(f"\nBatch accuracy: {accuracy:.2f}%")
-    """
