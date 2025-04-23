@@ -93,10 +93,11 @@ class NNModel(Model):
         self.model.fc = nn.Sequential(nn.Dropout(self.dropoutRate), nn.Linear(numFeatures, numClasses)) if self.dropoutRate > 0 else nn.Linear(numFeatures, numClasses)
 
     def setupTransform(self):
-        commonTransforms = [transforms.ToPILImage(), transforms.Resize((224, 224)), transforms.ToTensor(),
+        commonTransforms = [transforms.ToPILImage(), transforms.Resize((260, 260)), transforms.ToTensor(),
                             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
         
-        trainAug = [transforms.RandomHorizontalFlip(), transforms.RandomRotation(10), transforms.ColorJitter(brightness=0.2, contrast=0.2), transforms.RandomAffine(degrees=0, translate=(0.1, 0.1))]
+        trainAug = [transforms.RandomHorizontalFlip(), transforms.RandomRotation(15), transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1), 
+                    transforms.RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1)),]
         
         self.transform = transforms.Compose([transforms.ToPILImage()] + trainAug + commonTransforms[1:])
         self.evalTransform = transforms.Compose(commonTransforms)

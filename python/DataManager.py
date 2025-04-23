@@ -226,7 +226,7 @@ class DataManager:
         # show a grid of images, selected at random, with the titles the labels of the image
         # random list of values
         imagesToShow = np.random.randint(0, len(self.TrainingData), numImages)
-        print(f"Number of images: {len(self.TrainingData["image"])}")
+        print(f"Number of images: {len(self.TrainingData['image'])}")
 
         nrows = int(np.sqrt(numImages))
         ncols = nrows+1
