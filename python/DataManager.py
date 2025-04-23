@@ -218,6 +218,8 @@ class DataManager:
                                self.Using_laptopSet], ignore_index=True)
         print(newdf.shape)
 
+        self.TrainingData = newdf
+
         pass
     
     def LoadTrainingData(self, folderName: str = None, csvFileName: str = None, numFiles: int = None):

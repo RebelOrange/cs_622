@@ -688,10 +688,11 @@ if __name__ == "__main__":
     print("Test 1: Loading training data")
     dm = DataManager()
     current_folder = os.getcwd()
-    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=100)
+    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=None)
     dm.RemoveMissingData()
     dm.NormalizeImages()
     dm.ConvertToGrayScale()
+    dm.ReduceSetTo(840)
 
     print("Test 2: Creating model")
     num_classes = len(dm.TrainingData["label"].unique())
