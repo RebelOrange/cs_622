@@ -18,24 +18,24 @@ DATA_DIR = os.path.join(CURRENT_DIR, "../data/")
 MODEL_DIR = os.path.join(CURRENT_DIR, "../models")
 OUTPUT_DIR = os.path.join(CURRENT_DIR, "../output")
 
-CLASSES = ["sitting", "running", "drinking", "eating"]
-NUM_FILES_LIST = [50]
+CLASSES = ["sitting", "running", "drinking", "eating", "listening_to_music",]
+NUM_FILES_LIST = [300]
 IMAGE_SIZE = (260, 260)
 DATA_SPLIT = 0.8
 
-K_FOLDS = 2
-NUM_EPOCHS = 3
-BATCH_SIZE = 8
+K_FOLDS = 5
+NUM_EPOCHS = 30
+BATCH_SIZE = 24
 TARGET_ACCURACY = 95.0
 SAVE_CSV = None
 USE_KFOLD = True
 
 ARCHITECTURES = [
     {'class': NNModel, 'model_type': 'EfficientNet', 'variant': 'b0', 'prefix': 'EfficientNet'},
-    # {'class': NNModel, 'model_type': 'ResNet', 'variant': '18', 'prefix': 'ResNet'},
+    {'class': NNModel, 'model_type': 'ResNet', 'variant': '18', 'prefix': 'ResNet'},
 ]
-OPTIMIZERS = ['adam', 'sgd']
-LEARNING_RATES = [0.0001, 0.001]
+OPTIMIZERS = ['adam', 'sgd', 'adamw']
+LEARNING_RATES = [0.0001, 0.001, 0.01]
 DROPOUT_RATE = 0.0
 WEIGHT_DECAY = 0.0000
 
@@ -53,31 +53,6 @@ def set_global_seed(seed=42):
         torch.backends.cudnn.benchmark = False
     except Exception:
         pass
-
-def analyze_class_distribution(training_data, test_data):
-    train_counts = training_data["label"].value_counts()
-    test_counts = test_data["label"].value_counts()
-    print("\n--- Class Distribution ---")
-    for cls in train_counts.index:
-        train_pct = train_counts[cls]/len(training_data)*100
-        test_pct = test_counts.get(cls, 0)/len(test_data)*100
-        diff = abs(train_pct - test_pct)
-        status = "IMBALANCED" if diff > 5 else "OK"
-        print(f"{cls}: Train {train_pct:.2f}% vs Test {test_pct:.2f}% ({status})")
-    return train_counts, test_counts
-
-def visualize_data_distribution(dm, train_counts, test_counts):
-    dm.PlotDataDistrobution(dm.TrainingData, dm.TestData)
-    plt.figure(figsize=(12, 6))
-    x = np.arange(len(train_counts.index))
-    width = 0.35
-    plt.bar(x - width/2, train_counts / len(dm.TrainingData) * 100, width, label='Train')
-    plt.bar(x + width/2, test_counts / len(dm.TestData) * 100, width, label='Test')
-    plt.xlabel('Classes'); plt.ylabel('Percentage (%)')
-    plt.title('Class Distribution: Train vs Test')
-    plt.xticks(x, train_counts.index); plt.legend(); plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.tight_layout(); plt.show()
-    dm.ShowRandomImages(numImages=6, showGrayscale=False, showSegmented=False)
 
 def train_with_kfold(model, dm, model_name, k=5):
     all_stats, fold_acc = [], []
@@ -235,7 +210,7 @@ def main():
     for NUM_FILES in NUM_FILES_LIST:
         print(f"\nRunning experiment with NUM_FILES={NUM_FILES}")
         dm.ResetData()
-        classFilter = CLASSES  # or set to None if you want all classes
+        classFilter = CLASSES
         dm.LoadTrainAndTestData(
             folderName=DATA_DIR,
             csvFileName="Training_set.csv",
@@ -246,8 +221,6 @@ def main():
         dm.ResizeImages(TargetSize=IMAGE_SIZE)
         num_classes = len(dm.TrainingData["label"].unique())
         print(f"Loaded {len(dm.TrainingData)} train, {len(dm.TestData)} test, {num_classes} classes")
-        train_counts, test_counts = analyze_class_distribution(dm.TrainingData, dm.TestData)
-        visualize_data_distribution(dm, train_counts, test_counts)
         data_loading_timer.stop()
         print("\n" + "=" * 70 + "\nMODEL GENERATION AND TRAINING\n" + "=" * 70)
         evaluator = ModelEvaluator()
