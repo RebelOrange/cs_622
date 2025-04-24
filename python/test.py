@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import math
+import random
+import torch
 
 from DataManager import DataManager
 from NN_Model import NNModel
@@ -39,6 +41,18 @@ WEIGHT_DECAY = 0.0000
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+def set_global_seed(seed=42):
+    np.random.seed(seed)
+    random.seed(seed)
+    try:
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    except Exception:
+        pass
 
 def analyze_class_distribution(training_data, test_data):
     train_counts = training_data["label"].value_counts()
@@ -213,11 +227,13 @@ def visualize_kfold_results(kfold_results, test_results):
         print(f"{model:<30} {cv_acc:<20} {test_acc_str:<20} {optimizer:<10} {lr:<15}")
 
 def main():
+    set_global_seed(42)
     project_timer = Timer(); project_timer.start()
     print("=" * 70 + "\nINTEGRATED MODEL TRAINING AND EVALUATION PIPELINE\n" + "=" * 70)
     data_loading_timer = Timer(); data_loading_timer.start()
     print("\nLoading and preparing data...")
     dm = DataManager()
+    
     dm.LoadTrainAndTestData(folderName=DATA_DIR, csvFileName="Training_set.csv",
                             numFiles=NUM_FILES, classFilter=CLASSES, split=DATA_SPLIT)
     dm.RemoveMissingData(); dm.ResizeImages(TargetSize=IMAGE_SIZE)
