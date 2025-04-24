@@ -708,7 +708,7 @@ if __name__ == "__main__":
     dm = DataManager()
     current_folder = os.getcwd()
     
-    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=100)
+    dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=300)
     dm.RemoveMissingData()
     
     print("Test 2: Creating model")
