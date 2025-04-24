@@ -11,7 +11,7 @@ def plotAllVariantsTrainingCurves(evaluator, outputDir):
         modelTypeToVariants[modelType].append(modelName)
     
     for modelType, variantNames in modelTypeToVariants.items():
-        plt.figure(figsize=(14, 6))
+        plt.figure(figsize=(25, 15))
         ax1 = plt.subplot(1, 2, 1)
         ax2 = plt.subplot(1, 2, 2)
     

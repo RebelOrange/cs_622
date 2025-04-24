@@ -19,7 +19,7 @@ MODEL_DIR = os.path.join(CURRENT_DIR, "../models")
 OUTPUT_DIR = os.path.join(CURRENT_DIR, "../output")
 
 CLASSES = ["sitting", "running", "drinking", "eating"]
-NUM_FILES = 50
+NUM_FILES_LIST = [50]
 IMAGE_SIZE = (260, 260)
 DATA_SPLIT = 0.8
 
@@ -231,54 +231,61 @@ def main():
     project_timer = Timer(); project_timer.start()
     print("=" * 70 + "\nINTEGRATED MODEL TRAINING AND EVALUATION PIPELINE\n" + "=" * 70)
     data_loading_timer = Timer(); data_loading_timer.start()
-    print("\nLoading and preparing data...")
     dm = DataManager()
-    
-    dm.LoadTrainAndTestData(folderName=DATA_DIR, csvFileName="Training_set.csv",
-                            numFiles=NUM_FILES, classFilter=CLASSES, split=DATA_SPLIT)
-    dm.RemoveMissingData(); dm.ResizeImages(TargetSize=IMAGE_SIZE)
-    num_classes = len(dm.TrainingData["label"].unique())
-    print(f"Loaded {len(dm.TrainingData)} train, {len(dm.TestData)} test, {num_classes} classes")
-    train_counts, test_counts = analyze_class_distribution(dm.TrainingData, dm.TestData)
-    visualize_data_distribution(dm, train_counts, test_counts)
-    data_loading_timer.stop()
-    print("\n" + "=" * 70 + "\nMODEL GENERATION AND TRAINING\n" + "=" * 70)
-    evaluator = ModelEvaluator()
-    variants = generate_model_variants()
-    print("\nInitializing model variants...")
-    for i, v in enumerate(variants):
-        print(f"Init model {i+1}/{len(variants)}: {v['prefix']}")
-        model = v['class'](numClasses=num_classes, modelType=v['model_type'], variant=v['variant'],
-                           modelDir=MODEL_DIR, optimizerName=v['optimizer'], learningRate=v['lr'],
-                           weightDecay=WEIGHT_DECAY, dropoutRate=DROPOUT_RATE)
-        model.preprocess(dm.TrainingData)
-        evaluator.addModel(v['prefix'], model)
-    print("\n" + "=" * 70)
-    print(f"STEP 2: TRAINING ALL VARIANTS WITH {'K-FOLD' if USE_KFOLD else 'SINGLE SPLIT'}")
-    print("=" * 70)
-    training_timer = Timer(); training_timer.start()
-    kfold_results = {}
-    for model_name, model in evaluator.models.items():
-        fold_results = train_with_kfold(model, dm, model_name, k=K_FOLDS) if USE_KFOLD else train_single_model(model, dm, model_name)
-        kfold_results[model_name] = fold_results
-        if 'fold_stats' in fold_results and fold_results['fold_stats']:
-            evaluator.results.setdefault(model_name, {})['epochStats'] = [ep for fold in fold_results['fold_stats'] for ep in fold.get('epochs', [])]
-    training_timer.stop()
-    evaluation_timer = Timer(); evaluation_timer.start()
-    test_results = evaluate_and_visualize_results(dm, evaluator, kfold_results, variants)
-    evaluation_timer.stop()
-    print("\n" + "=" * 70 + "\nFINAL RESULTS\n" + "=" * 70)
-    best_model = max(kfold_results, key=lambda k: kfold_results[k]['mean_accuracy'])
-    best_cv = kfold_results[best_model]['mean_accuracy']
-    best_std = kfold_results[best_model]['std_accuracy']
-    best_test = test_results.get(best_model, 0)
-    print(f"\nBEST MODEL: {best_model}\nCV acc: {best_cv:.2f}% ± {best_std:.2f}%\nTest acc: {best_test:.2f}%")
-    if SAVE_CSV:
-        print("\nExporting results...")
-        evaluator.exportAllConfusionMatrices(OUTPUT_DIR, saveCsv=True)
-        evaluator.exportTestResults(os.path.join(OUTPUT_DIR, "test_results.csv"), saveCsv=True)
-    project_timer.stop()
-    print("\n" + "="*70 + "\nANALYSIS COMPLETED\n" + "="*70)
+    for NUM_FILES in NUM_FILES_LIST:
+        print(f"\nRunning experiment with NUM_FILES={NUM_FILES}")
+        dm.ResetData()
+        classFilter = CLASSES  # or set to None if you want all classes
+        dm.LoadTrainAndTestData(
+            folderName=DATA_DIR,
+            csvFileName="Training_set.csv",
+            numFiles=NUM_FILES,
+            classFilter=classFilter,
+            split=DATA_SPLIT)
+        dm.RemoveMissingData()
+        dm.ResizeImages(TargetSize=IMAGE_SIZE)
+        num_classes = len(dm.TrainingData["label"].unique())
+        print(f"Loaded {len(dm.TrainingData)} train, {len(dm.TestData)} test, {num_classes} classes")
+        train_counts, test_counts = analyze_class_distribution(dm.TrainingData, dm.TestData)
+        visualize_data_distribution(dm, train_counts, test_counts)
+        data_loading_timer.stop()
+        print("\n" + "=" * 70 + "\nMODEL GENERATION AND TRAINING\n" + "=" * 70)
+        evaluator = ModelEvaluator()
+        variants = generate_model_variants()
+        print("\nInitializing model variants...")
+        for i, v in enumerate(variants):
+            print(f"Init model {i+1}/{len(variants)}: {v['prefix']}")
+            model = v['class'](numClasses=num_classes, modelType=v['model_type'], variant=v['variant'],
+                               modelDir=MODEL_DIR, optimizerName=v['optimizer'], learningRate=v['lr'],
+                               weightDecay=WEIGHT_DECAY, dropoutRate=DROPOUT_RATE)
+            model.preprocess(dm.TrainingData)
+            evaluator.addModel(v['prefix'], model)
+        print("\n" + "=" * 70)
+        print(f"STEP 2: TRAINING ALL VARIANTS WITH {'K-FOLD' if USE_KFOLD else 'SINGLE SPLIT'}")
+        print("=" * 70)
+        training_timer = Timer(); training_timer.start()
+        kfold_results = {}
+        for model_name, model in evaluator.models.items():
+            fold_results = train_with_kfold(model, dm, model_name, k=K_FOLDS) if USE_KFOLD else train_single_model(model, dm, model_name)
+            kfold_results[model_name] = fold_results
+            if 'fold_stats' in fold_results and fold_results['fold_stats']:
+                evaluator.results.setdefault(model_name, {})['epochStats'] = [ep for fold in fold_results['fold_stats'] for ep in fold.get('epochs', [])]
+        training_timer.stop()
+        evaluation_timer = Timer(); evaluation_timer.start()
+        test_results = evaluate_and_visualize_results(dm, evaluator, kfold_results, variants)
+        evaluation_timer.stop()
+        print("\n" + "=" * 70 + "\nFINAL RESULTS\n" + "=" * 70)
+        best_model = max(kfold_results, key=lambda k: kfold_results[k]['mean_accuracy'])
+        best_cv = kfold_results[best_model]['mean_accuracy']
+        best_std = kfold_results[best_model]['std_accuracy']
+        best_test = test_results.get(best_model, 0)
+        print(f"\nBEST MODEL: {best_model}\nCV acc: {best_cv:.2f}% ± {best_std:.2f}%\nTest acc: {best_test:.2f}%")
+        if SAVE_CSV:
+            print("\nExporting results...")
+            evaluator.exportAllConfusionMatrices(OUTPUT_DIR, saveCsv=True)
+            evaluator.exportTestResults(os.path.join(OUTPUT_DIR, "test_results.csv"), saveCsv=True)
+        project_timer.stop()
+        print("\n" + "="*70 + "\nANALYSIS COMPLETED\n" + "="*70)
 
 if __name__ == "__main__":
     main()
