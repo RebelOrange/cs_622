@@ -21,13 +21,13 @@ MODEL_DIR = os.path.join(CURRENT_DIR, "../models")
 OUTPUT_DIR = os.path.join(CURRENT_DIR, "../output")
 
 CLASSES = ["sitting", "running", "drinking", "eating", "listening_to_music"]
-NUM_FILES_LIST = [10] 
+NUM_FILES_LIST = [300] 
 IMAGE_SIZE = (260, 260)
 DATA_SPLIT = 0.7
 
-K_FOLDS = 2
-NUM_EPOCHS = 3
-BATCH_SIZE = 6
+K_FOLDS = 5
+NUM_EPOCHS = 30
+BATCH_SIZE = 24
 TARGET_ACCURACY = 95.0 
 SAVE_CSV = None
 USE_KFOLD = True 
@@ -36,8 +36,8 @@ ARCHITECTURES = [
     {'class': NNModel, 'model_type': 'EfficientNet', 'variant': 'b0', 'prefix': 'EfficientNet'},
     {'class': NNModel, 'model_type': 'ResNet', 'variant': '18', 'prefix': 'ResNet'},
 ]
-OPTIMIZERS = ['adam', 'sgd']
-LEARNING_RATES = [0.0001, 0.001]
+OPTIMIZERS = ['adam', 'sgd', 'adamw']
+LEARNING_RATES = [0.0001, 0.001, 0.01]
 DROPOUT_RATE = 0.0
 WEIGHT_DECAY = 0.0000
 
