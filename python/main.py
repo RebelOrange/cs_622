@@ -1,6 +1,12 @@
+import sys
+
+import matplotlib.pyplot as plt
+
+from ModelEvaluator import ModelEvaluator
 from NNModel import NNModel
 from DataManager import *
-
+# Import matplotlib for plotting
+from PlotUltilities import PlotPiePlot, PlotConfusionMatrix, PlotKFoldConfusionMatrices
 
 if __name__ == "__main__":
     TRAIN_MODEL = True
@@ -10,8 +16,8 @@ if __name__ == "__main__":
     ######################################### Load Data #########################################################
     #### Load full set, plot and save, then load actual set ####
     dm = DataManager()
-    numFilesList = [150]
-    classes = ["sitting", "running", "drinking","eating", "listening_to_music"]
+    numFilesList = [120]
+    classes = ["sitting", "running", "drinking","eating"]#, "listening_to_music"]
     dataSplit = 0.8
 
     for numFiles in numFilesList:
@@ -28,6 +34,7 @@ if __name__ == "__main__":
         dm.RemoveMissingData()
         dm.ResizeImages(TargetSize=(224, 224))
         dm.NormalizeImages()
+        dm.SetClassNames()
 
     ##### Data Plots ######
     # Pie plot of data distribution, subplot of distribution of training and testing with split and number of files as
@@ -53,6 +60,8 @@ if __name__ == "__main__":
     k = 5
     best_accuracy = 0
     best_prediction = 0
+    k_labels = []
+    k_predictions = []
     if TRAIN_MODEL:
         if USE_KFOLD:
             for i in range(k):
@@ -77,10 +86,13 @@ if __name__ == "__main__":
                 labels = dm.GetKTestLabels()
                 images = dm.GetKTestImages()
 
+                k_labels.append(labels)
+
                 # predict images
                 predictions = []
                 for image in images:
                     predictions.append(model.Predict(image))
+                k_predictions.append(predictions)
 
                 correct = sum(1 for a, p in zip(labels, predictions) if a == p)
                 accuracy = 100 * correct / len(labels)
@@ -90,12 +102,13 @@ if __name__ == "__main__":
                 actual_counts = pd.Series(labels).value_counts(normalize=True) * 100
                 predicted_counts = pd.Series(predictions).value_counts(normalize=True) * 100
 
-                fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-                axes[0].pie(actual_counts, labels=actual_counts.index, autopct='%1.1f%%')
-                axes[0].set_title(f"{i} Fold Actual Labels Distribution \n Accuracy = {kFoldStats[-1][3]}")
-                axes[1].pie(predicted_counts, labels=predicted_counts.index, autopct='%1.1f%%')
-                axes[1].set_title(f"{i} Fold Predicted Labels Distribution \n Accuracy = {accuracy}")
-                plt.tight_layout()
+                fig, axes = PlotPiePlot(actual_counts, predicted_counts)
+                axes[0].set_title(f"Fold Actual Labels")
+                axes[1].set_title(f"Predicted Labels")
+                plt.show()
+
+                fig, axes = PlotConfusionMatrix(labels, predictions, dm.ClassNames)
+                axes.set_title(f"{i}-fold Confusion Matrix")
                 plt.show()
 
 
@@ -105,7 +118,10 @@ if __name__ == "__main__":
                     model.SaveModel(epoch=kFoldStats[-1][0], loss=kFoldStats[-1][2], model_name="ResNet")
                     print("Saved best model")
 
-
+            fig, axes = PlotKFoldConfusionMatrices(k_labels, k_predictions, dm.ClassNames)
+            print(f"Best accuracy: {best_accuracy:.2f}%")
+            plt.show()
+            #print(f"Best predictions: {best_prediction}")
         else:
             print("No K-Fold")
             model.Train(
@@ -119,14 +135,14 @@ if __name__ == "__main__":
                 show_epoch_stats=True)
         pass
 
+
     if LOAD_BEST_MODEL:
         model.LoadModel("ResNet")
         model.SetupClassMapping(dm.TrainingData)
         pass
     ######################################## Evaluation #########################################################
-    # Import matplotlib for plotting
-    import matplotlib.pyplot as plt
-    
+    dm.SetClassNames()
+
     # setup labels
     labels = dm.GetTestLabels()
     images = dm.GetTestImages()
@@ -141,13 +157,7 @@ if __name__ == "__main__":
     actual_counts = pd.Series(labels).value_counts(normalize=True) * 100
     predicted_counts = pd.Series(predictions).value_counts(normalize=True) * 100
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-    axes[0].pie(actual_counts, labels=actual_counts.index, autopct='%1.1f%%')
-    axes[0].set_title("Actual Labels Distribution")
-    axes[1].pie(predicted_counts, labels=predicted_counts.index, autopct='%1.1f%%')
-    axes[1].set_title("Predicted Labels Distribution")
-    plt.tight_layout()
-    plt.show()
+    PlotPiePlot(actual_counts, predicted_counts, title="Actual vs Predicted Labels Distribution")
 
     print("\nBatch Prediction Results:")
     print("-------------------------")
@@ -161,6 +171,8 @@ if __name__ == "__main__":
     print(f"\nBatch accuracy: {accuracy:.2f}%")
 
     # Confusion Matrix
+    PlotConfusionMatrix(labels, predictions, dm.ClassNames)
+
 
 
 

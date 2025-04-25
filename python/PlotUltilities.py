@@ -7,6 +7,81 @@ from sklearn.metrics import roc_curve, auc, roc_auc_score
 from sklearn.preprocessing import label_binarize
 import csv
 from collections import defaultdict
+import matplotlib.pyplot as plt
+import matplotlib.style as style
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from matplotlib import rcParams
+
+
+# change pyplot styling
+style.use('classic')
+# Customize to resemble MATLAB's figure defaults
+rcParams['lines.linewidth'] = 1.5  # Default line width in MATLAB
+rcParams['lines.markersize'] = 6  # Marker size
+rcParams['axes.grid'] = True  # Grid enabled by default
+rcParams['grid.alpha'] = 0.5  # Grid transparency
+rcParams['font.size'] = 12  # Font size
+rcParams['axes.titlesize'] = 14  # Axes title size
+rcParams['axes.labelsize'] = 12  # Axes label size
+rcParams['xtick.labelsize'] = 10  # X-axis tick size
+rcParams['ytick.labelsize'] = 10  # Y-axis tick size
+
+def PlotPiePlot(actual_counts, predicted_counts, title = ""):
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    axes[0].pie(actual_counts, labels=actual_counts.index, autopct='%1.1f%%')
+    axes[0].set_title("Actual Labels Distribution")
+    axes[1].pie(predicted_counts, labels=predicted_counts.index, autopct='%1.1f%%')
+    axes[1].set_title("Predicted Labels Distribution")
+    plt.tight_layout()
+
+    return fig, axes
+
+def PlotConfusionMatrix(labels, predictions, class_names, normalize: bool = True):
+    cm = confusion_matrix(labels, predictions)
+    if normalize:
+        cm_norm = cm.astype('float') / cm.sum(axis=1, keepdims=True) * 100
+        cm = np.nan_to_num(cm_norm)  # Handle division by zero if any class is missing data
+    
+    
+    
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
+    disp.plot(cmap='Blues', xticks_rotation='vertical', colorbar=False, values_format=".1f")
+    plt.title("Confusion Matrix (Normalized to Percentages)")
+    plt.xlabel("Predicted Label")
+    plt.ylabel("True Label")
+    plt.grid(False)
+    
+    plt.tight_layout()
+
+    return plt.gcf(), plt.gca()
+
+def PlotKFoldConfusionMatrices(k_labels, k_predictions, class_names, normalize: bool = True, figsize=(10, 10)):
+    num_folds = len(k_labels)
+    cols = min(3, num_folds)
+    rows = (num_folds + cols - 1) // cols
+    
+    fig, axes = plt.subplots(rows, cols, figsize=figsize, squeeze=False)
+    axes = axes.flatten()
+    
+    for i, (labels, predictions) in enumerate(zip(k_labels, k_predictions)):
+        cm = confusion_matrix(labels, predictions)
+        if normalize:
+            cm_norm = cm.astype('float') / cm.sum(axis=1, keepdims=True) * 100
+            cm = np.nan_to_num(cm_norm)
+        
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
+        disp.plot(ax=axes[i], cmap='Blues', xticks_rotation='vertical', colorbar=False, values_format=".1f")
+        axes[i].set_title(f'Fold {i + 1}')
+        axes[i].grid(False)
+    
+    # Remove any extra subplots
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+    
+    plt.tight_layout()
+    return fig, axes
+
+
 
 def savePlot(fig, path, suffix=""):
     if not path: return

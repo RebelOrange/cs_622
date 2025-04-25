@@ -113,6 +113,8 @@ class DataManager:
         print("Final k-fold size of training data: ", len(self.KTrainingData))
         print("Final k-fold size of validation data: ", len(self.KTestData))
 
+    def SetClassNames(self):
+        self.ClassNames = self.TrainingData["label"].unique()
 
     def RemoveMissingData(self):
         # remove missing dataframe rows based on the self.TrainingData["image"].image being None type? and maybe when 
