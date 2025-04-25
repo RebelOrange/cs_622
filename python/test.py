@@ -8,41 +8,53 @@ import torch
 
 from DataManager import DataManager
 from NN_Model import NNModel
-from ModelEvaluator import ModelEvaluator, plotConfigMatrix
-from TrainingPlot import plotAllVariantsTrainingCurves
-from Timer import Timer
+from PlotAndEval import (
+    compareModels, plotConfusionMatrix, compareModelTypeVariants, compareBestAcrossModelTypes,
+    plotConfigMatrix, plotAllVariantsTrainingCurves, evaluateModel
+)
 
-# ===================== GLOBAL CONFIGURATION =====================
+#=====================================================================
+#                         GLOBAL CONFIGURATION
+#=====================================================================
 CURRENT_DIR = os.getcwd()
 DATA_DIR = os.path.join(CURRENT_DIR, "../data/")
 MODEL_DIR = os.path.join(CURRENT_DIR, "../models")
 OUTPUT_DIR = os.path.join(CURRENT_DIR, "../output")
 
-CLASSES = ["sitting", "running", "drinking", "eating", "listening_to_music",]
-NUM_FILES_LIST = [300]
+# Dataset configuration
+CLASSES = ["sitting", "running", "drinking", "eating", "listening_to_music"]
+NUM_FILES_LIST = [10]  # Number of files per class to use
 IMAGE_SIZE = (260, 260)
-DATA_SPLIT = 0.8
+DATA_SPLIT = 0.8  # 80% training, 20% testing
 
-K_FOLDS = 5
-NUM_EPOCHS = 30
-BATCH_SIZE = 24
-TARGET_ACCURACY = 95.0
-SAVE_CSV = None
-USE_KFOLD = True
+# Training settings
+K_FOLDS = 2
+NUM_EPOCHS = 3
+BATCH_SIZE = 6
+TARGET_ACCURACY = 95.0  # Early stopping accuracy threshold
+SAVE_CSV = None  # Set to True to save results to CSV files
+USE_KFOLD = True  # Whether to use K-fold cross-validation
 
+# Model configuration
 ARCHITECTURES = [
     {'class': NNModel, 'model_type': 'EfficientNet', 'variant': 'b0', 'prefix': 'EfficientNet'},
     {'class': NNModel, 'model_type': 'ResNet', 'variant': '18', 'prefix': 'ResNet'},
 ]
-OPTIMIZERS = ['adam', 'sgd', 'adamw']
-LEARNING_RATES = [0.0001, 0.001, 0.01]
+OPTIMIZERS = ['adam', 'sgd']
+LEARNING_RATES = [0.0001, 0.001]
 DROPOUT_RATE = 0.0
 WEIGHT_DECAY = 0.0000
 
+# Create output directories
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-def set_global_seed(seed=42):
+#=====================================================================
+#                           HELPER FUNCTIONS
+#=====================================================================
+
+def setGlobalSeed(seed=42):
+    """Set random seeds for reproducibility across numpy, Python random, and PyTorch."""
     np.random.seed(seed)
     random.seed(seed)
     try:
@@ -54,145 +66,263 @@ def set_global_seed(seed=42):
     except Exception:
         pass
 
-def train_with_kfold(model, dm, model_name, k=5):
-    all_stats, fold_acc = [], []
-    for i in range(k):
-        print(f"\n--- Fold {i+1}/{k} ---")
-        model.resetModel(numClasses=len(dm.TrainingData["label"].unique()),
-                         optimizerName=model.optimizerName,
-                         learningRate=model.learningRate,
-                         weightDecay=model.weightDecay,
-                         dropoutRate=model.dropoutRate)
-        model.setupMapMapping(dm.TrainingData)
-        dm.SplitKFold(k=k, foldIndex=i)
-        if i == 0: dm.PlotDataDistrobution(dm.KTrainingData, dm.KTestData)
-        stats = model.train(dm.KTrainingData, epochs=NUM_EPOCHS, batchSize=BATCH_SIZE,
-                            saveInterval=1, loadModel=False, saveModel=False, targetAccuracy=TARGET_ACCURACY)
-        if stats: all_stats.append({'fold': i+1, 'epochs': stats})
-        labels, images = dm.GetKTestLabels(), dm.GetKTestImages()
-        preds = [model.predict(img) for img in images]
-        acc = 100 * sum(a == p for a, p in zip(labels, preds)) / len(labels)
-        fold_acc.append(acc)
-        print(f"Fold {i+1} val acc: {acc:.2f}%")
-    avg, std = np.mean(fold_acc), np.std(fold_acc)
-    print(f"\n{model_name} {k}-fold: {avg:.2f}% ± {std:.2f}% | Folds: {', '.join(f'{a:.2f}%' for a in fold_acc)}")
-    return {'fold_stats': all_stats, 'fold_accuracies': fold_acc, 'mean_accuracy': avg, 'std_accuracy': std}
-
-def train_single_model(model, dm, model_name):
-    print(f"\n{'='*10} Training {model_name} (single split) {'='*10}")
-    model.resetModel(numClasses=len(dm.TrainingData["label"].unique()),
-                     optimizerName=model.optimizerName,
-                     learningRate=model.learningRate,
-                     weightDecay=model.weightDecay,
-                     dropoutRate=model.dropoutRate)
-    model.setupMapMapping(dm.TrainingData)
-    stats = model.train(dm.TrainingData, epochs=NUM_EPOCHS, batchSize=BATCH_SIZE,
-                        saveInterval=1, loadModel=False, saveModel=False, targetAccuracy=TARGET_ACCURACY)
-    last_acc = stats[-1][3] if stats else 0.0
-    return {'fold_stats': [{'fold': 1, 'epochs': stats}], 'fold_accuracies': [last_acc], 'mean_accuracy': last_acc, 'std_accuracy': 0.0}
-
-def generate_model_variants():
+def generateModelVariants():
+    """Generate all combinations of architectures, optimizers, and learning rates."""
     return [
         dict(arch, optimizer=opt, lr=lr, prefix=f"{arch['prefix']}_{opt}_lr{lr}")
         for arch in ARCHITECTURES for opt in OPTIMIZERS for lr in LEARNING_RATES
     ]
 
-def calculate_per_class_accuracy(labels, preds, class_mapping):
+#=====================================================================
+#                           TRAINING FUNCTIONS
+#=====================================================================
+
+def trainWithKfold(model, dm, model_name, k=5):
+    """Train a model using k-fold cross-validation."""
+    all_stats, fold_acc = [], []
+    
+    for i in range(k):
+        print(f"\n--- Fold {i+1}/{k} ---")
+        # Reset model for each fold
+        model.resetModel(
+            numClasses=len(dm.TrainingData["label"].unique()),
+            optimizerName=model.optimizerName,
+            learningRate=model.learningRate,
+            weightDecay=model.weightDecay,
+            dropoutRate=model.dropoutRate
+        )
+        
+        # Set up class mapping and prepare k-fold split
+        model.setupMapMapping(dm.TrainingData)
+        dm.SplitKFold(k=k, foldIndex=i)
+        
+        # Show data distribution for first fold
+        if i == 0: 
+            dm.PlotDataDistrobution(dm.KTrainingData, dm.KTestData)
+        
+        # Train model on k-fold training data
+        stats = model.train(
+            dm.KTrainingData, 
+            epochs=NUM_EPOCHS, 
+            batchSize=BATCH_SIZE,
+            saveInterval=1, 
+            loadModel=False, 
+            saveModel=True, 
+            targetAccuracy=TARGET_ACCURACY
+        )
+        
+        if stats: 
+            all_stats.append({'fold': i+1, 'epochs': stats})
+        
+        # Evaluate on k-fold validation data
+        labels, images = dm.GetKTestLabels(), dm.GetKTestImages()
+        preds = [model.predict(img) for img in images]
+        acc = 100 * sum(a == p for a, p in zip(labels, preds)) / len(labels)
+        fold_acc.append(acc)
+        print(f"Fold {i+1} val acc: {acc:.2f}%")
+    
+    # Calculate overall statistics
+    avg, std = np.mean(fold_acc), np.std(fold_acc)
+    print(f"\n{model_name} {k}-fold: {avg:.2f}% ± {std:.2f}% | Folds: {', '.join(f'{a:.2f}%' for a in fold_acc)}")
+    
+    return {
+        'fold_stats': all_stats, 
+        'fold_accuracies': fold_acc, 
+        'mean_accuracy': avg, 
+        'std_accuracy': std
+    }
+
+def trainSingleModel(model, dm, model_name):
+    """Train a model using a single train/test split (no k-fold)."""
+    print(f"\n{'='*10} Training {model_name} (single split) {'='*10}")
+    
+    # Reset model
+    model.resetModel(
+        numClasses=len(dm.TrainingData["label"].unique()),
+        optimizerName=model.optimizerName,
+        learningRate=model.learningRate,
+        weightDecay=model.weightDecay,
+        dropoutRate=model.dropoutRate
+    )
+    
+    # Set up class mapping and train
+    model.setupMapMapping(dm.TrainingData)
+    stats = model.train(
+        dm.TrainingData, 
+        epochs=NUM_EPOCHS, 
+        batchSize=BATCH_SIZE,
+        saveInterval=1, 
+        loadModel=False, 
+        saveModel=True, 
+        targetAccuracy=TARGET_ACCURACY
+    )
+    
+    # Get final accuracy from training stats
+    last_acc = stats[-1][3] if stats else 0.0
+    
+    return {
+        'fold_stats': [{'fold': 1, 'epochs': stats}], 
+        'fold_accuracies': [last_acc], 
+        'mean_accuracy': last_acc, 
+        'std_accuracy': 0.0
+    }
+
+#=====================================================================
+#                        EVALUATION FUNCTIONS
+#=====================================================================
+
+def calculatePerClassAccuracy(labels, preds, class_mapping):
+    """Calculate and display per-class accuracy metrics."""
     class_total = {cls: 0 for cls in class_mapping.values()}
     class_correct = {cls: 0 for cls in class_mapping.values()}
+    
+    # Count correct predictions per class
     for a, p in zip(labels, preds):
         class_total[a] += 1
-        if a == p: class_correct[a] += 1
+        if a == p: 
+            class_correct[a] += 1
+    
+    # Print per-class accuracy
     print("\nPer-Class Accuracy:")
     for cls in class_mapping.values():
         if class_total[cls]:
             acc = 100 * class_correct[cls] / class_total[cls]
             print(f"{cls}: {acc:.2f}% ({class_correct[cls]}/{class_total[cls]})")
 
-def analyze_misclassifications(images, labels, preds):
+def analyzeMisclassifications(images, labels, preds):
+    """Analyze and visualize misclassified images."""
+    # Find misclassified examples
     confused = [(i, a, p) for i, (a, p) in enumerate(zip(labels, preds)) if a != p]
     print(f"\nMisclassified: {len(confused)}/{len(labels)}")
-    if not confused: return
+    if not confused: 
+        return
+    
+    # Count most common misclassification pairs
     from collections import Counter
     pairs = Counter((a, p) for _, a, p in confused)
     print("\nTop misclassifications:")
     for (a, p), cnt in pairs.most_common(5):
         print(f"  {a} → {p}: {cnt}")
-    n = len(confused); grid = int(math.ceil(math.sqrt(n)))
-    fig, axes = plt.subplots(grid, grid, figsize=(15, 15)); axes = axes.flatten()
+    
+    # Visualize misclassified images in a grid
+    n = len(confused)
+    grid = int(math.ceil(math.sqrt(n)))
+    fig, axes = plt.subplots(grid, grid, figsize=(15, 15))
+    axes = axes.flatten()
+    
     for i, (idx, a, p) in enumerate(confused):
         if i < len(axes):
+            # Get image
             img = images[idx].image if hasattr(images[idx], "image") else images[idx]
             if img is not None:
-                if not isinstance(img, np.ndarray): img = np.array(img)
-                if img.dtype == np.dtype('O'): img = np.array(img.tolist(), dtype=np.float32)
-                if img.ndim == 3 and img.shape[-1] == 1: img = img.squeeze(-1)
+                # Handle different image formats
+                if not isinstance(img, np.ndarray): 
+                    img = np.array(img)
+                if img.dtype == np.dtype('O'): 
+                    img = np.array(img.tolist(), dtype=np.float32)
+                if img.ndim == 3 and img.shape[-1] == 1: 
+                    img = img.squeeze(-1)
+                    
                 axes[i].imshow(img)
-            axes[i].set_title(f"A: {a}\nP: {p}", color='red'); axes[i].axis('off')
-    for j in range(len(confused), len(axes)): axes[j].axis('off')
+            axes[i].set_title(f"A: {a}\nP: {p}", color='red')
+            axes[i].axis('off')
+    
+    # Turn off empty subplot axes
+    for j in range(len(confused), len(axes)): 
+        axes[j].axis('off')
+    
     plt.suptitle(f"Misclassified Images ({n})", fontsize=16)
-    plt.tight_layout(); plt.subplots_adjust(top=0.95); plt.show()
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.95)
+    plt.show()
 
-def evaluate_and_visualize_results(dm, evaluator, kfold_results, variants):
+def evaluateAndVisualizeResults(dm, models, results, confusionMatrices, classNames, metrics, kfold_results, variants):
     print("\n" + "="*70 + "\nEVALUATING MODELS\n" + "="*70)
     test_results = {}
-    for model_name, model in evaluator.models.items():
-        acc = evaluator.evaluateModel(model_name, dm.TestData, BATCH_SIZE)
+    for model_name, model in models.items():
+        acc = evaluateModel(models, results, confusionMatrices, classNames, metrics, model_name, dm.TestData, BATCH_SIZE)
         test_results[model_name] = acc
-        res = evaluator.results.get(model_name, {})
+        res = results.get(model_name, {})
         preds, labels = res.get('predictions'), res.get('trueLabels')
-        class_names = evaluator.classNames.get(model_name)
+        class_names = classNames.get(model_name)
         images = dm.TestData["image"].tolist() if hasattr(dm.TestData, "image") else None
         if preds is not None and labels is not None and class_names and images:
-            calculate_per_class_accuracy(labels, preds, class_names)
-            analyze_misclassifications(images, labels, preds)
-    evaluator.compareModels()
-    for model_name in evaluator.confusionMatrices: evaluator.plotConfusionMatrix(model_name)
-    for mt in {n.split('_')[0] for n in evaluator.results if '_' in n}: evaluator.compareModelTypeVariants(mt)
-    evaluator.compareBestAcrossModelTypes()
-    for model_name in evaluator.models:
+            calculatePerClassAccuracy(labels, preds, class_names)
+            analyzeMisclassifications(images, labels, preds)
+    compareModels(results, metrics)
+    for model_name in confusionMatrices:
+        plotConfusionMatrix(confusionMatrices, classNames, model_name)
+    for mt in {n.split('_')[0] for n in results if '_' in n}:
+        compareModelTypeVariants(results, classNames, metrics, mt)
+    compareBestAcrossModelTypes(results, classNames, metrics)
+    for model_name in models:
         if model_name in kfold_results:
             folds = kfold_results[model_name].get('fold_stats', [])
             all_epochs = [ep for fold in folds for ep in fold.get('epochs', [])]
             if all_epochs:
-                evaluator.results.setdefault(model_name, {})['epochStats'] = all_epochs
-    plotAllVariantsTrainingCurves(evaluator, OUTPUT_DIR)
+                results.setdefault(model_name, {})['epochStats'] = all_epochs
+    plotAllVariantsTrainingCurves(results, models, OUTPUT_DIR)
     for mt in {v['prefix'].split('_')[0] for v in variants if 'prefix' in v}:
         configs = [{
             'Model': v['prefix'],
             'Variant': v.get('variant', ''),
             'optimizerName': v.get('optimizer', ''),
             'learningRate': v.get('lr', ''),
-            'Accuracy': evaluator.results.get(v['prefix'], {}).get('accuracy', 0.0)
+            'Accuracy': results.get(v['prefix'], {}).get('accuracy', 0.0)
         } for v in variants if v['prefix'].startswith(mt)]
         if configs:
             config_df = pd.DataFrame(configs)
-            plotConfigMatrix(evaluator, config_df, mt, path=os.path.join(OUTPUT_DIR, f"{mt}_config_matrix"), saveCsv=True)
-    visualize_kfold_results(kfold_results, test_results)
+            plotConfigMatrix(
+                config_df,
+                mt,
+                path=os.path.join(OUTPUT_DIR, f"{mt}_config_matrix"),
+                saveCsv=False
+            )
+    visualizeKfoldResults(kfold_results, test_results)
     return test_results
 
-def visualize_kfold_results(kfold_results, test_results):
+def visualizeKfoldResults(kfold_results, test_results):
+    """Visualize comparative performance between k-fold CV and test set."""
+    # Prepare data
     model_names = list(kfold_results.keys())
     mean_acc = [r['mean_accuracy'] for r in kfold_results.values()]
     std_acc = [r['std_accuracy'] for r in kfold_results.values()]
     test_acc = [test_results.get(n, 0) for n in model_names]
+    
+    # Sort by CV accuracy (descending)
     idx = np.argsort(mean_acc)[::-1]
     model_names = [model_names[i] for i in idx]
     mean_acc = [mean_acc[i] for i in idx]
     std_acc = [std_acc[i] for i in idx]
     test_acc = [test_acc[i] for i in idx]
+    
+    # Create comparison bar chart
     plt.figure(figsize=(15, 8))
-    x = np.arange(len(model_names)); width = 0.35
-    plt.bar(x - width/2, mean_acc, width, yerr=std_acc, label=f'{K_FOLDS}-Fold CV', capsize=5, color='skyblue')
-    plt.bar(x + width/2, test_acc, width, label='Test', color='lightcoral')
-    plt.ylabel('Accuracy (%)'); plt.title(f'Model Performance: {K_FOLDS}-Fold CV vs Test')
-    plt.xticks(x, model_names, rotation=45, ha='right'); plt.legend(); plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.tight_layout(); plt.show()
+    x = np.arange(len(model_names))
+    width = 0.35
+    
+    # Plot CV and test accuracy bars
+    plt.bar(x - width/2, mean_acc, width, yerr=std_acc, 
+            label=f'{K_FOLDS}-Fold CV', capsize=5, color='skyblue')
+    plt.bar(x + width/2, test_acc, width, 
+            label='Test', color='lightcoral')
+    
+    # Add labels and formatting
+    plt.ylabel('Accuracy (%)')
+    plt.title(f'Model Performance: {K_FOLDS}-Fold CV vs Test')
+    plt.xticks(x, model_names, rotation=45, ha='right')
+    plt.legend()
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.show()
+    
+    # Print table of top models
     top_n = min(5, len(model_names))
     print(f"\nTop {top_n} Models:")
     print("="*100)
     print(f"{'Model':<30} {'CV Accuracy':<20} {'Test Accuracy':<20} {'Optimizer':<10} {'Learning Rate':<15}")
     print("-"*100)
+    
     for model in model_names[:top_n]:
         parts = model.split('_')
         optimizer = parts[2] if len(parts) > 2 else "N/A"
@@ -201,63 +331,89 @@ def visualize_kfold_results(kfold_results, test_results):
         test_acc_str = f"{test_results.get(model, 0):.2f}%"
         print(f"{model:<30} {cv_acc:<20} {test_acc_str:<20} {optimizer:<10} {lr:<15}")
 
+#=====================================================================
+#                             MAIN FUNCTION
+#=====================================================================
+
 def main():
-    set_global_seed(42)
-    project_timer = Timer(); project_timer.start()
+    """Main function to execute the model training and evaluation pipeline."""
+    # Set random seed for reproducibility
+    setGlobalSeed(42)
+    
     print("=" * 70 + "\nINTEGRATED MODEL TRAINING AND EVALUATION PIPELINE\n" + "=" * 70)
-    data_loading_timer = Timer(); data_loading_timer.start()
+    
+    # Data loading phase
     dm = DataManager()
+    
+    # For each number of files to test
     for NUM_FILES in NUM_FILES_LIST:
         print(f"\nRunning experiment with NUM_FILES={NUM_FILES}")
         dm.ResetData()
         classFilter = CLASSES
+        
+        # Load and preprocess data
         dm.LoadTrainAndTestData(
             folderName=DATA_DIR,
             csvFileName="Training_set.csv",
             numFiles=NUM_FILES,
             classFilter=classFilter,
-            split=DATA_SPLIT)
+            split=DATA_SPLIT
+        )
         dm.RemoveMissingData()
         dm.ResizeImages(TargetSize=IMAGE_SIZE)
+        
         num_classes = len(dm.TrainingData["label"].unique())
         print(f"Loaded {len(dm.TrainingData)} train, {len(dm.TestData)} test, {num_classes} classes")
-        data_loading_timer.stop()
+        
+        # Model generation and initialization
         print("\n" + "=" * 70 + "\nMODEL GENERATION AND TRAINING\n" + "=" * 70)
-        evaluator = ModelEvaluator()
-        variants = generate_model_variants()
+        models = {}
+        results = {}
+        confusionMatrices = {}
+        classNames = {}
+        metrics = {}
+        variants = generateModelVariants()
+        
         print("\nInitializing model variants...")
         for i, v in enumerate(variants):
             print(f"Init model {i+1}/{len(variants)}: {v['prefix']}")
-            model = v['class'](numClasses=num_classes, modelType=v['model_type'], variant=v['variant'],
-                               modelDir=MODEL_DIR, optimizerName=v['optimizer'], learningRate=v['lr'],
-                               weightDecay=WEIGHT_DECAY, dropoutRate=DROPOUT_RATE)
+            model = v['class'](
+                numClasses=num_classes, 
+                modelType=v['model_type'], 
+                variant=v['variant'],
+                modelDir=MODEL_DIR, 
+                optimizerName=v['optimizer'], 
+                learningRate=v['lr'],
+                weightDecay=WEIGHT_DECAY, 
+                dropoutRate=DROPOUT_RATE
+            )
             model.preprocess(dm.TrainingData)
-            evaluator.addModel(v['prefix'], model)
+            models[v['prefix']] = model
+        
+        # Training phase
         print("\n" + "=" * 70)
         print(f"STEP 2: TRAINING ALL VARIANTS WITH {'K-FOLD' if USE_KFOLD else 'SINGLE SPLIT'}")
         print("=" * 70)
-        training_timer = Timer(); training_timer.start()
+        
         kfold_results = {}
-        for model_name, model in evaluator.models.items():
-            fold_results = train_with_kfold(model, dm, model_name, k=K_FOLDS) if USE_KFOLD else train_single_model(model, dm, model_name)
+        
+        for model_name, model in models.items():
+            # Train each model (k-fold or single split)
+            if USE_KFOLD:
+                fold_results = trainWithKfold(model, dm, model_name, k=K_FOLDS) 
+            else:
+                fold_results = trainSingleModel(model, dm, model_name)
+                
             kfold_results[model_name] = fold_results
+            
+            # Store epoch stats
             if 'fold_stats' in fold_results and fold_results['fold_stats']:
-                evaluator.results.setdefault(model_name, {})['epochStats'] = [ep for fold in fold_results['fold_stats'] for ep in fold.get('epochs', [])]
-        training_timer.stop()
-        evaluation_timer = Timer(); evaluation_timer.start()
-        test_results = evaluate_and_visualize_results(dm, evaluator, kfold_results, variants)
-        evaluation_timer.stop()
-        print("\n" + "=" * 70 + "\nFINAL RESULTS\n" + "=" * 70)
-        best_model = max(kfold_results, key=lambda k: kfold_results[k]['mean_accuracy'])
-        best_cv = kfold_results[best_model]['mean_accuracy']
-        best_std = kfold_results[best_model]['std_accuracy']
-        best_test = test_results.get(best_model, 0)
-        print(f"\nBEST MODEL: {best_model}\nCV acc: {best_cv:.2f}% ± {best_std:.2f}%\nTest acc: {best_test:.2f}%")
-        if SAVE_CSV:
-            print("\nExporting results...")
-            evaluator.exportAllConfusionMatrices(OUTPUT_DIR, saveCsv=True)
-            evaluator.exportTestResults(os.path.join(OUTPUT_DIR, "test_results.csv"), saveCsv=True)
-        project_timer.stop()
+                all_epochs = [ep for fold in fold_results['fold_stats'] for ep in fold.get('epochs', [])]
+                results.setdefault(model_name, {})['epochStats'] = all_epochs
+        
+        # Evaluation phase
+        test_results = evaluateAndVisualizeResults(dm, models, results, confusionMatrices, classNames, metrics, kfold_results, variants)
+        
         print("\n" + "="*70 + "\nANALYSIS COMPLETED\n" + "="*70)
 
 if __name__ == "__main__":

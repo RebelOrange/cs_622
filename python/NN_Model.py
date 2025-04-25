@@ -13,7 +13,6 @@ import math
 from Model import Model
 from DataManager import DataFrameImage, DataManager
 from ModelManager import ModelManager
-from Timer import Timer
 
 ################################ INIT & SETUP ################################
 class NNModel(Model):
