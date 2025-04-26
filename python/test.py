@@ -1,370 +1,147 @@
 import os
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import math
-import random
-import torch
-from collections import Counter
-
 from DataManager import DataManager
-from NN_Model_New import NNModel
-from PlotAndEval import (
-    compareModels, plotConfusionMatrix, compareModelTypeVariants, compareBestAcrossModelTypes,
-    plotConfigMatrix, plotAllVariantsTrainingCurves, evaluateModel
-)
+from NN_Model import NNModel
+from ModelEvaluator import ModelEvaluator
+from TrainingPlot import plotAllVariantsTrainingCurves
+from Trainer import WriteCsv
+import csv
+from Timer import Timer
 
-############### GLOBAL CONFIG #################
+# ===================== GLOBAL CONFIGURATION =====================
 CURRENT_DIR = os.getcwd()
 DATA_DIR = os.path.join(CURRENT_DIR, "../data/")
 MODEL_DIR = os.path.join(CURRENT_DIR, "../models")
 OUTPUT_DIR = os.path.join(CURRENT_DIR, "../output")
 
-CLASSES = ["sitting", "running", "drinking", "eating", "listening_to_music"]
-NUM_FILES_LIST = [300] 
-IMAGE_SIZE = (260, 260)
-DATA_SPLIT = 0.7
-
-K_FOLDS = 5
-NUM_EPOCHS = 30
-BATCH_SIZE = 24
-TARGET_ACCURACY = 95.0 
-SAVE_CSV = None
-USE_KFOLD = True 
-
-ARCHITECTURES = [
-    {'class': NNModel, 'model_type': 'EfficientNet', 'variant': 'b0', 'prefix': 'EfficientNet'},
-    {'class': NNModel, 'model_type': 'ResNet', 'variant': '18', 'prefix': 'ResNet'},
-]
-OPTIMIZERS = ['adam', 'sgd', 'adamw']
-LEARNING_RATES = [0.0001, 0.001, 0.01]
-DROPOUT_RATE = 0.0
-WEIGHT_DECAY = 0.0000
+CLASSES = ["sitting", "running", "drinking", "eating"]
+NUM_FILES = 10
+NUM_EPOCHS = 3
+BATCH_SIZE = 8
+MAX_CONFIGS = 3
+TRAIN_RATIO = 0.7
+VAL_RATIO = 0.15
+TEST_RATIO = 0.15
+TARGET_ACCURACY = 100.0
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-########### HELPER #################
 
-def setGlobalSeed(seed=42):
-    np.random.seed(seed)
-    random.seed(seed)
-    try:
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-    except Exception:
-        pass
+if __name__ == "__main__":
+    # ===================== TIMER SETUP =====================
+    
+    project_timer = Timer()
+    project_timer.start()
+    print("=", "=" * 50)
+    print("Whole project timer started...")
+    print("=", "=" * 50)
+    # ===================== DATA LOADING =====================
+    print("=", "=" * 50)
+    data_loading_timer = Timer()
+    data_loading_timer.start()
+    print("\nLoading training data...")
+    dm = DataManager()
+    dm.LoadTrainAndTestData(folderName=DATA_DIR, csvFileName="Training_set.csv", numFiles=NUM_FILES, classFilter=CLASSES)
+    dm.RemoveMissingData()
+    num_classes = len(dm.TrainingData["label"].unique())
+    print(f"Loaded {len(dm.TrainingData)} samples with {num_classes} classes")
+    data_loading_timer.stop()
+    print("=", "=" * 50)
+    # ===================== MODEL EVALUATION =====================
+    eval_timer = Timer()
+    eval_timer.start()
+    print("\nEvaluating architectures...")
+    print("=", "=" * 50)
+    evaluator = ModelEvaluator()
 
-def generateModelVariants():
-    return [
-        dict(arch, optimizer=opt, lr=lr, prefix=f"{arch['prefix']}_{opt}_lr{lr}")
-        for arch in ARCHITECTURES for opt in OPTIMIZERS for lr in LEARNING_RATES
+    architectures = [
+        {'class': NNModel, 'model_type': 'EfficientNet', 'variant': 'b0', 'prefix': 'EfficientNet'},
+        {'class': NNModel, 'model_type': 'ResNet', 'variant': '18', 'prefix': 'ResNet'},
     ]
 
-################# TRAIN HELPER #################
-def trainWithKfold(model, dm, model_name, k=5):
-    all_stats, fold_acc = [], []
-    
-    for i in range(k):
-        print(f"\n========= Fold {i+1}/{k} =========")
-        model.resetModel(
-            numClasses=len(dm.TrainingData["label"].unique()),
-            optimizerName=model.optimizerName,
-            learningRate=model.learningRate,
-            weightDecay=model.weightDecay,
-            dropoutRate=model.dropoutRate
-        )
-        
-        model.setupMapMapping(dm.TrainingData)
-        dm.SplitKFold(k=k, foldIndex=i)
-        
-        if i == 0: 
-            dm.PlotDataDistrobution(dm.KTrainingData, dm.KTestData)
-        
-        stats = model.train(
-            dm.KTrainingData, 
-            epochs=NUM_EPOCHS, 
-            batchSize=BATCH_SIZE,
-            saveInterval=1, 
-            loadModel=False, 
-            saveModel=True, 
-            targetAccuracy=TARGET_ACCURACY
-        )
-        
-        if stats: 
-            all_stats.append({'fold': i+1, 'epochs': stats})
-        
-        labels, images = dm.GetKTestLabels(), dm.GetKTestImages()
-        preds = [model.predict(img) for img in images]
-        acc = 100 * sum(a == p for a, p in zip(labels, preds)) / len(labels)
-        fold_acc.append(acc)
-        print(f"Fold {i+1} val acc: {acc:.2f}%")
-    
-    avg, std = np.mean(fold_acc), np.std(fold_acc)
-    print(f"\n{model_name} {k}-fold: {avg:.2f}% ± {std:.2f}% | Folds: {', '.join(f'{a:.2f}%' for a in fold_acc)}")
-    
-    return {
-        'fold_stats': all_stats, 
-        'fold_accuracies': fold_acc, 
-        'mean_accuracy': avg, 
-        'std_accuracy': std
-    }
-
-def trainSingleModel(model, dm, model_name):
-    print(f"\n{'='*10} Training {model_name} (single split) {'='*10}")
-    
-    model.resetModel(
-        numClasses=len(dm.TrainingData["label"].unique()),
-        optimizerName=model.optimizerName,
-        learningRate=model.learningRate,
-        weightDecay=model.weightDecay,
-        dropoutRate=model.dropoutRate
-    )
-    
-    model.setupMapMapping(dm.TrainingData)
-    stats = model.train(
-        dm.TrainingData, 
-        epochs=NUM_EPOCHS, 
+    results = evaluator.evaluateArchitectures(
+        trainingData=dm.TrainingData,
+        architectures=architectures,
+        modelDir=MODEL_DIR,
+        numEpochs=NUM_EPOCHS,
         batchSize=BATCH_SIZE,
-        saveInterval=1, 
-        loadModel=False, 
-        saveModel=True, 
+        maxConfigs=MAX_CONFIGS,
+        outputDir=os.path.join(OUTPUT_DIR, "architecture_comparison"),
+        loadBest=True,
+        saveBest=True,
         targetAccuracy=TARGET_ACCURACY
     )
-    
-    last_acc = stats[-1][3] if stats else 0.0
-    
-    return {
-        'fold_stats': [{'fold': 1, 'epochs': stats}], 
-        'fold_accuracies': [last_acc], 
-        'mean_accuracy': last_acc, 
-        'std_accuracy': 0.0
-    }
+    eval_timer.stop()
+    print("=", "=" * 50)
+    # ===================== COMPARISON & EXPORT =====================
+    print("\nComparing best models across architectures...")
+    print("=", "=" * 50)
+    compre_timer = Timer()
+    compre_timer.start()
+    evaluator.compareModels()
+    evaluator.compareBestAcrossModelTypes(
+        path=os.path.join(OUTPUT_DIR, "best_architecture_comparison"),
+        saveCsv=True
+    )
 
-############# EVAL HELPER #################
-def calculatePerClassAccuracy(labels, preds, class_mapping):
-    class_total = {cls: 0 for cls in class_mapping.values()}
-    class_correct = {cls: 0 for cls in class_mapping.values()}
-    
-    for a, p in zip(labels, preds):
-        class_total[a] += 1
-        if a == p: 
-            class_correct[a] += 1
-    
-    print("\nPer-Class Accuracy:")
-    for cls in class_mapping.values():
-        if class_total[cls]:
-            acc = 100 * class_correct[cls] / class_total[cls]
-            print(f"{cls}: {acc:.2f}% ({class_correct[cls]}/{class_total[cls]})")
+    print("\nExporting confusion matrices and test results...")
+    evaluator.exportAllConfusionMatrices(OUTPUT_DIR, saveCsv=True)
+    evaluator.exportTestResults(os.path.join(OUTPUT_DIR, "test_results.csv"), saveCsv=True)
 
-def analyzeMisclassifications(images, labels, preds):
-    confused = [(i, a, p) for i, (a, p) in enumerate(zip(labels, preds)) if a != p]
-    print(f"\nMisclassified: {len(confused)}/{len(labels)}")
-    if not confused: 
-        return
-    
-    pairs = Counter((a, p) for _, a, p in confused)
-    print("\nTop misclassifications:")
-    
-    for (a, p), cnt in pairs.most_common(5):
-        print(f"  {a} → {p}: {cnt}")
-    
-    n = len(confused)
-    grid = int(math.ceil(math.sqrt(n)))
-    fig, axes = plt.subplots(grid, grid, figsize=(15, 15))
-    axes = axes.flatten()
-    
-    for i, (idx, a, p) in enumerate(confused):
-        if i < len(axes):
-            img = images[idx].image if hasattr(images[idx], "image") else images[idx]
-            if img is not None:
-                if not isinstance(img, np.ndarray): 
-                    img = np.array(img)
-                if img.dtype == np.dtype('O'): 
-                    img = np.array(img.tolist(), dtype=np.float32)
-                if img.ndim == 3 and img.shape[-1] == 1: 
-                    img = img.squeeze(-1)
-                    
-                axes[i].imshow(img)
-            axes[i].set_title(f"A: {a}\nP: {p}", color='red')
-            axes[i].axis('off')
-    
-    for j in range(len(confused), len(axes)): 
-        axes[j].axis('off')
-    
-    plt.suptitle(f"Misclassified Images ({n})", fontsize=16)
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.95)
-    plt.show()
-
-def evaluateAndVisualizeResults(dm, models, results, confusionMatrices, classNames, metrics, kfold_results, variants):
-    print("\n" + "="*70 + "\nEVALUATING MODELS\n" + "="*70)
-    test_results = {}
-    
-    for model_name, model in models.items():
-        acc = evaluateModel(models, results, confusionMatrices, classNames, metrics, model_name, dm.TestData, BATCH_SIZE)
-        test_results[model_name] = acc
-        res = results.get(model_name, {})
-        preds, labels = res.get('predictions'), res.get('trueLabels')
-        class_names = classNames.get(model_name)
-        images = dm.TestData["image"].tolist() if hasattr(dm.TestData, "image") else None
-        
-        if preds is not None and labels is not None and class_names and images:
-            calculatePerClassAccuracy(labels, preds, class_names)
-            analyzeMisclassifications(images, labels, preds)
-    
-    compareModels(results, metrics)
-    
-    for model_name in confusionMatrices:
-        plotConfusionMatrix(confusionMatrices, classNames, model_name)
-    
-    for mt in {n.split('_')[0] for n in results if '_' in n}:
-        compareModelTypeVariants(results, classNames, metrics, mt)
-    
-    compareBestAcrossModelTypes(results, classNames, metrics)
-    
-    for model_name in models:
-        if model_name in kfold_results:
-            folds = kfold_results[model_name].get('fold_stats', [])
-            all_epochs = [ep for fold in folds for ep in fold.get('epochs', [])]
-            if all_epochs:
-                results.setdefault(model_name, {})['epochStats'] = all_epochs
-    
-    plotAllVariantsTrainingCurves(results, models, OUTPUT_DIR)
-    
-    for mt in {v['prefix'].split('_')[0] for v in variants if 'prefix' in v}:
-        configs = [{
-            'Model': v['prefix'],
-            'Variant': v.get('variant', ''),
-            'optimizerName': v.get('optimizer', ''),
-            'learningRate': v.get('lr', ''),
-            'Accuracy': results.get(v['prefix'], {}).get('accuracy', 0.0)
-        } for v in variants if v['prefix'].startswith(mt)]
-        
-        if configs:
-            config_df = pd.DataFrame(configs)
-            plotConfigMatrix(
-                config_df,
-                mt,
-                path=os.path.join(OUTPUT_DIR, f"{mt}_config_matrix"),
-                saveCsv=False
-            )
-    
-    visualizeKfoldResults(kfold_results, test_results)
-    return test_results
-
-def visualizeKfoldResults(kfold_results, test_results):
-    model_names = list(kfold_results.keys())
-    mean_acc = [r['mean_accuracy'] for r in kfold_results.values()]
-    std_acc = [r['std_accuracy'] for r in kfold_results.values()]
-    test_acc = [test_results.get(n, 0) for n in model_names]
-    
-    idx = np.argsort(mean_acc)[::-1]
-    model_names = [model_names[i] for i in idx]
-    mean_acc = [mean_acc[i] for i in idx]
-    std_acc = [std_acc[i] for i in idx]
-    test_acc = [test_acc[i] for i in idx]
-
-    plt.figure(figsize=(15, 8))
-    x = np.arange(len(model_names))
-    width = 0.35
-    
-    plt.bar(x - width/2, mean_acc, width, yerr=std_acc, 
-            label=f'{K_FOLDS}-Fold CV', capsize=5, color='skyblue')
-    plt.bar(x + width/2, test_acc, width, 
-            label='Test', color='lightcoral')
-    
-    plt.ylabel('Accuracy (%)')
-    plt.title(f'Model Performance: {K_FOLDS}-Fold CV vs Test')
-    plt.xticks(x, model_names, rotation=45, ha='right')
-    plt.legend()
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.tight_layout()
-    plt.show()
-    
-    top_n = min(5, len(model_names))
-    print(f"\nTop {top_n} Models:")
-    print("="*100)
-    print(f"{'Model':<30} {'CV Accuracy':<20} {'Test Accuracy':<20} {'Optimizer':<10} {'Learning Rate':<15}")
-    print("-"*100)
-    
-    for model in model_names[:top_n]:
-        parts = model.split('_')
-        optimizer = parts[2] if len(parts) > 2 else "N/A"
-        lr = parts[3].replace('lr', '') if len(parts) > 3 else "N/A"
-        cv_acc = f"{kfold_results[model]['mean_accuracy']:.2f}% ± {kfold_results[model]['std_accuracy']:.2f}%"
-        test_acc_str = f"{test_results.get(model, 0):.2f}%"
-        print(f"{model:<30} {cv_acc:<20} {test_acc_str:<20} {optimizer:<10} {lr:<15}")
-
-############## MAIN #################
-if __name__ == "__main__":
-    setGlobalSeed(42)
-    
-    print("=" * 70 + "\nRUN ML PROJECT HAR\n" + "=" * 70)
-    
-    dm = DataManager()
-    
-    for NUM_FILES in NUM_FILES_LIST:
-        print(f"\nRunning experiment with NUM_FILES={NUM_FILES}")
-        dm.ResetData()
-        classFilter = CLASSES
-        
-        dm.LoadTrainAndTestData(
-            folderName=DATA_DIR,
-            csvFileName="Training_set.csv",
-            numFiles=NUM_FILES,
-            classFilter=classFilter,
-            split=DATA_SPLIT
+    print("\nPlotting ROC curves for all models...")
+    for modelName in evaluator.results:
+        evaluator.plotRocCurve(
+            modelName,
+            path=os.path.join(OUTPUT_DIR, f"{modelName}_roc"),
+            saveCsv=True
         )
-        dm.RemoveMissingData()
-        dm.ResizeImages(TargetSize=IMAGE_SIZE)
+
+    print("\nPlotting confusion matrices for all models...")
+    for modelName in evaluator.confusionMatrices:
+        evaluator.plotConfusionMatrix(
+            modelName,
+            path=os.path.join(OUTPUT_DIR, f"{modelName}_cm"),
+            saveCsv=True
+        )
+
+    print("\nSaving and plotting epoch stats for all models/configs...")
+    for modelName, model in evaluator.models.items():
+        epochStats = None
         
-        num_classes = len(dm.TrainingData["label"].unique())
-        print(f"Loaded {len(dm.TrainingData)} train, {len(dm.TestData)} test, {num_classes} classes")
+        if modelName in evaluator.results and 'epochStats' in evaluator.results[modelName]:
+            epochStats = evaluator.results[modelName]['epochStats']
+        elif hasattr(model, 'epochStats'):
+            epochStats = getattr(model, 'epochStats')
+        elif hasattr(model, 'trainingHistory'):
+            epochStats = getattr(model, 'trainingHistory')
         
-        print("\n" + "=" * 70 + "\nMODEL GENERATION AND TRAINING\n" + "=" * 70)
-        models, results, confusionMatrices, classNames, metrics = {}, {}, {}, {}, {}
-        variants = generateModelVariants()
+        csvFile = os.path.join(OUTPUT_DIR, f"{modelName}_epoch_stats.csv")
+        csvExists = os.path.isfile(csvFile)
         
-        print("\nInitializing model variants...")
-        for i, v in enumerate(variants):
-            print(f"Init model {i+1}/{len(variants)}: {v['prefix']}")
+        if epochStats and len(epochStats) > 0 and not csvExists:
+            WriteCsv(epochStats, csvFile)
+        elif epochStats and len(epochStats) > 0 and csvExists:
+            existingStats = []
             
-            model = v['class'](
-                numClasses=num_classes, 
-                modelType=v['model_type'], 
-                variant=v['variant'],
-                modelDir=MODEL_DIR, 
-                optimizerName=v['optimizer'], 
-                learningRate=v['lr'],
-                weightDecay=WEIGHT_DECAY, 
-                dropoutRate=DROPOUT_RATE
-            )
-            
-            model.preprocess(dm.TrainingData)
-            models[v['prefix']] = model
-        
-        print("\n" + "=" * 70)
-        print(f"TRAINING ALL VARIANTS WITH {'K-FOLD' if USE_KFOLD else 'SINGLE SPLIT'}")
-        print("=" * 70)
-        
-        kfold_results = {}
-        
-        for model_name, model in models.items():
-            if USE_KFOLD:
-                fold_results = trainWithKfold(model, dm, model_name, k=K_FOLDS) 
-            else:
-                fold_results = trainSingleModel(model, dm, model_name)
+            with open(csvFile, 'r') as f:
+                reader = csv.reader(f)
+                next(reader)
                 
-            kfold_results[model_name] = fold_results
+                for row in reader:
+                    existingStats.append([int(row[0]), float(row[1]), float(row[2]), float(row[3])])
             
-            if 'fold_stats' in fold_results and fold_results['fold_stats']:
-                all_epochs = [ep for fold in fold_results['fold_stats'] for ep in fold.get('epochs', [])]
-                results.setdefault(model_name, {})['epochStats'] = all_epochs
-        
-        test_results = evaluateAndVisualizeResults(dm, models, results, confusionMatrices, classNames, metrics, kfold_results, variants)
-        
-        print("\n" + "="*70 + "\nANALYSIS COMPLETED\n" + "="*70)
+            lastEpoch = existingStats[-1][0] if existingStats else 0
+            newStats = [row for row in epochStats if row[0] > lastEpoch]
+            allStats = existingStats + newStats
+            WriteCsv(allStats, csvFile)
+
+    plotAllVariantsTrainingCurves(evaluator, OUTPUT_DIR)
+    compre_timer.stop()
+    print("=", "=" * 50)
+    # ===================== FINALIZE =====================
+    print("\nEnd...")
+    print("=", "=" * 50)
+    project_timer.stop()
+    print("\nProject timer stopped.")
+    print("\nAll analysis and plots completed.")
+    print("=", "=" * 50)

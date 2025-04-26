@@ -4,7 +4,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import csv
-from collections import defaultdict
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 from sklearn.preprocessing import label_binarize
 
@@ -16,8 +15,8 @@ def compareModels(results, metrics):
     df = pd.DataFrame(data)
     plt.figure(figsize=(20, 15))
     
-    values = [metrics[model]['accuracy'] for model in metrics]
-    bars = plt.bar(list(metrics.keys()), values, color='skyblue')
+    vals = [metrics[model]['accuracy'] for model in metrics]
+    bars = plt.bar(list(metrics.keys()), vals, color='skyblue')
     
     for bar in bars:
         height = bar.get_height()
@@ -101,10 +100,12 @@ def plotConfigMatrix(matrix, modelType, path=None, saveCsv=False):
     plt.show()
 
 def plotAllVariantsTrainingCurves(results, models, outputDir):
-    model_variants = defaultdict(list)
+    model_variants = {}
 
     for name in models:
         model_type = name.split('_')[0]
+        if model_type not in model_variants:
+            model_variants[model_type] = []
         model_variants[model_type].append(name)
 
     for model_type, variants in model_variants.items():
@@ -202,7 +203,7 @@ def computeModelRoc(results, classNames, name):
         }
     
     else:
-        print(f"ROC/AUC not supported for model {name} (no classes -> check classes init)")
+        print(f"ROC/AUC not supported for model {name} (no classes -> check classes init func call)")
     
         return {
             'macro': ([0, 1], [0, 0], 0.5),
