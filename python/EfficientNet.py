@@ -710,16 +710,16 @@ if __name__ == "__main__":
     
     dm.LoadTrainingData(folderName=current_folder+"/../data/", csvFileName="Training_set.csv", numFiles=300)
     dm.RemoveMissingData()
-    
+
     print("Test 2: Creating model")
     num_classes = len(dm.TrainingData["label"].unique())
     model_dir = os.path.join(current_folder, "../models")
     os.makedirs(model_dir, exist_ok=True)
-    
+
     print("Test 3: Finding optimal configuration")
     model = EfficientNet(num_classes=num_classes, variant='b0', model_dir=model_dir)
     best_config = model.findBestConfig(dm.TrainingData, validation_split=0.2, epochs=3, batch_size=64, max_configs=5)
-    
+
     print("Test 4: Training model with best configuration")
     model = EfficientNet(
         num_classes=num_classes,
@@ -751,7 +751,7 @@ if __name__ == "__main__":
     plt.legend()
 
     plt.show()
-    
+
     print("\nTest 5: Testing model predictions...")
     # load testing data
     dm.LoadTestData(folderName=current_folder+"/../data/", csvFileName="Testing_set.csv", numFiles=100)
@@ -760,17 +760,17 @@ if __name__ == "__main__":
 
     # Direct model loading - bypass ModelManager if we not train the model as the loadmodel is work only if we train the model
     # uncomment to get the predict csv file
-    
+
     model_path = os.path.join(model_dir, "EfficientNet_best.pth")
     if os.path.exists(model_path):
         try:
             print(f"Try to load model directly from {model_path}")
             checkpoint = torch.load(model_path, map_location=model.device)
-            
+
             if 'model_state_dict' in checkpoint:
                 model.model.load_state_dict(checkpoint['model_state_dict'])
                 print(f"Successfully loaded model weights from {model_path}")
-                
+
                 # Debug cause wtf is not working with otehr loading method
                 print(f"Checkpoint contains keys: {list(checkpoint.keys())}")
                 if 'epoch' in checkpoint:
@@ -800,45 +800,45 @@ if __name__ == "__main__":
     })
     result_df.to_csv("test_predictions.csv", index=False)
     print("Predictions saved to test_predictions.csv")
-    
+
 
     ## test predict with the batch of images from the training data
     print("\nTest 6: Testing model predictions on a batch of training data...")
     num_images = 50
     test_batch = dm.TrainingData.sample(num_images)
     predicted_labels = model.predict(test_batch["image"])
-    
+
     max_cols = 5
     cols = min(num_images, max_cols)
     rows = math.ceil(num_images / cols)
-    
+
     fig, axes = plt.subplots(rows, cols, figsize=(cols*3, rows*3))
-    
+
     if rows == 1:
         axes = np.array([axes])
-    
+
     if num_images == 1:
         axes = np.array([[axes]])
-    
+
     axes_flat = axes.flatten()
-    
+
     for i in range(num_images):
         ax = axes_flat[i]
-        
+
         img_obj = test_batch["image"].iloc[i]
         img_array = img_obj.image
-        
+
         ax.imshow(img_array)
         true_label = test_batch["label"].iloc[i]
         pred_label = predicted_labels[i]
-        
+
         color = 'green' if true_label == pred_label else 'red'
         ax.set_title(f"True: {true_label}\nPred: {pred_label}", color=color)
         ax.axis('off')
-    
+
     for i in range(num_images, len(axes_flat)):
         axes_flat[i].axis('off')
-    
+
     plt.tight_layout()
     plt.suptitle(f"Model Predictions on {num_images} Test Images", fontsize=16)
     plt.subplots_adjust(top=0.9)
@@ -853,6 +853,6 @@ if __name__ == "__main__":
     correct = sum(1 for a, p in zip(dm.TrainingData["label"], predicted_labels) if a == p)
     accuracy = 100 * correct / len(dm.TrainingData["label"])
     print(f"Batch test accuracy: {accuracy:.2f}%")
-    
+
     print("Done")
     print("="*50)
