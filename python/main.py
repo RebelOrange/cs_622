@@ -1,5 +1,6 @@
 from NNModel import NNModel
 from DataManager import *
+import math
 
 
 if __name__ == "__main__":
@@ -25,9 +26,9 @@ if __name__ == "__main__":
             numFiles=numFiles,
             classFilter=classFilter,
             split=dataSplit)
-        dm.RemoveMissingData()
-        dm.ResizeImages(TargetSize=(224, 224))
+        dm.ResizeImages(TargetSize=(240, 240))
         dm.NormalizeImages()
+        dm.ConvertToGrayScale()
 
     ##### Data Plots ######
     # Pie plot of data distribution, subplot of distribution of training and testing with split and number of files as
@@ -39,18 +40,18 @@ if __name__ == "__main__":
         dm.ShowRandomImages(numImages=6, showGrayscale=False, showSegmented=False)
 
     ######################################### init Single Model ################################################
-    modelType = "ResNet"
+    modelType = "EfficientNet"
     num_classes = len(dm.TrainingData["label"].unique())
-    model = NNModel(num_classes=num_classes, variant='b0', model_dir="../models/Training", modelType=modelType, optimizer="Adam",
-                    learningRate=0.0001)
+    model = NNModel(num_classes=num_classes, variant='b4', model_dir="../models/Training", modelType=modelType, optimizer="Adam",
+                    learningRate=0.001)
     model.Preprocess(dm.TrainingData)
     model.SetOptimizer(
         optimizer="Adam",
-        learningRate=0.0001)
+        learningRate=0.001)
 
 
     ######################################### Train Model #######################################################
-    k = 5
+    k = 10
     best_accuracy = 0
     best_prediction = 0
     if TRAIN_MODEL:
@@ -58,7 +59,7 @@ if __name__ == "__main__":
             for i in range(k):
                 print(f"Training fold {i+1} of {k}...")
                 model.ResetModel()
-                model.SetOptimizer(optimizer="Adam", learningRate=0.0001)
+                model.SetOptimizer(optimizer="Adam", learningRate=0.001)
                 model.SetupClassMapping(dm.TrainingData)
                 dm.SplitKFold(k=k, foldIndex=i)
                 if i == 0:
@@ -66,7 +67,7 @@ if __name__ == "__main__":
                     dm.PlotDataDistrobution(dm.KTrainingData, dm.KTestData)
                 kFoldStats = model.Train(
                     dm.KTrainingData,
-                    epochs=20,
+                    epochs=15,
                     batch_size=32,
                     save_interval=1,
                     load_model=LOAD_BEST_MODEL,
@@ -110,7 +111,7 @@ if __name__ == "__main__":
             print("No K-Fold")
             model.Train(
                 dm.TrainingData,
-                epochs=20,
+                epochs=15,
                 batch_size=32,
                 save_interval=1,
                 load_model=LOAD_BEST_MODEL,
@@ -136,6 +137,45 @@ if __name__ == "__main__":
     for image in images:
         predictions.append(model.Predict(image))
     #predictions = model.PredictBatch(images)
+    num_images = 50
+    test_batch = dm.TrainingData.sample(num_images)
+    predicted_labels = model.predict(test_batch["image"])
+
+    max_cols = 5
+    cols = min(num_images, max_cols)
+    rows = math.ceil(num_images / cols)
+
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 3, rows * 3))
+
+    if rows == 1:
+        axes = np.array([axes])
+
+    if num_images == 1:
+        axes = np.array([[axes]])
+
+    axes_flat = axes.flatten()
+
+    for i in range(num_images):
+        ax = axes_flat[i]
+
+        img_obj = test_batch["image"].iloc[i]
+        img_array = img_obj.image
+
+        ax.imshow(img_array)
+        true_label = test_batch["label"].iloc[i]
+        pred_label = predicted_labels[i]
+
+        color = 'green' if true_label == pred_label else 'red'
+        ax.set_title(f"True: {true_label}\nPred: {pred_label}", color=color)
+        ax.axis('off')
+
+    for i in range(num_images, len(axes_flat)):
+        axes_flat[i].axis('off')
+
+    plt.tight_layout
+    plt.suptitle(f"Model Predictions on {num_images} Test Images", fontsize=16)
+    plt.subplots_adjust(top=0.9)
+    plt.show()
 
     # Create pie plots for predicted and actual labels
     actual_counts = pd.Series(labels).value_counts(normalize=True) * 100
