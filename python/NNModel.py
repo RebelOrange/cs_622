@@ -10,6 +10,7 @@ import os
 from Model import Model
 from DataManager import DataFrameImage, DataManager
 from ModelManager import ModelManager
+import matplotlib.pyplot as plt
 
 """
 Reference: 
@@ -469,6 +470,26 @@ class NNModel(Model):
 
     def LoadModel(self, model_name="EfficientNet"):
         return self.model_manager.load(best_only=True, model_name=model_name)
+
+    def ShowPredictedImages(self, images,  predictedLabels: list[str] = None, actualLabels: list[str] = None):
+        # show a grid of images, selected at random, with the titles the labels of the image
+        # random list of values
+        numImages = len(images)
+
+        nrows = int(np.sqrt(len(images)))
+        ncols = nrows + 1
+        print("nrows: ", nrows, "ncols: ", ncols)
+        fig, axs = plt.subplots(nrows, ncols, figsize=(10, 10))
+        for i in range(numImages):
+            image = images[i]
+            pix = image
+            axs[i // ncols, i % ncols].imshow(pix)
+            axs[i // ncols, i % ncols].set_title(f"Actual: {actualLabels[i]}\nPredicted: {predictedLabels[i]}")
+            axs[i // ncols, i % ncols].axis('off')
+
+        plt.subplots_adjust(wspace=0.01, hspace=0.001)
+        plt.show()
+        pass
 
 
 ##################################### Testing Code ############################################

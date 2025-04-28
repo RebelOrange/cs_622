@@ -1,4 +1,5 @@
 import sys
+import random
 
 import matplotlib.pyplot as plt
 
@@ -9,15 +10,23 @@ from DataManager import *
 from PlotUltilities import PlotPiePlot, PlotConfusionMatrix, PlotKFoldConfusionMatrices
 
 if __name__ == "__main__":
-    TRAIN_MODEL = True
-    LOAD_BEST_MODEL = False
+    CLEAR_MODELS = False
+    TRAIN_MODEL = False
+    LOAD_BEST_MODEL = True
     USE_KFOLD = True
 
+    model_dir ="../models/Training"
+    if CLEAR_MODELS:
+        import os
+        import glob
+        for file in glob.glob(os.path.join(model_dir, "*.pth")):
+            os.remove(file)
+        
+
     ######################################### Load Data #########################################################
-    #### Load full set, plot and save, then load actual set ####
     dm = DataManager()
-    numFilesList = [120]
-    classes = ["sitting", "running", "drinking","eating"]#, "listening_to_music"]
+    numFilesList = [840]
+    classes = ["sitting", "running", "drinking","eating", "listening_to_music"]
     dataSplit = 0.8
 
     for numFiles in numFilesList:
@@ -25,8 +34,7 @@ if __name__ == "__main__":
         classFilter = None
         if numFiles is not None:
             classFilter = classes
-        dm.LoadTrainAndTestData(
-            folderName="../data/",
+        dm.LoadTrainAndTestData(folderName="../data/",
             csvFileName="Training_set.csv",
             numFiles=numFiles,
             classFilter=classFilter,
@@ -44,7 +52,7 @@ if __name__ == "__main__":
 
     # plot example images with labels in a 2x3 layout
         dm.ShowRandomImages(numImages=6, showGrayscale=False, showSegmented=False)
-
+    sys.exit(0)
     ######################################### init Single Model ################################################
     modelType = "ResNet"
     num_classes = len(dm.TrainingData["label"].unique())
@@ -103,12 +111,12 @@ if __name__ == "__main__":
                 predicted_counts = pd.Series(predictions).value_counts(normalize=True) * 100
 
                 fig, axes = PlotPiePlot(actual_counts, predicted_counts)
-                axes[0].set_title(f"Fold Actual Labels")
+                axes[0].set_title(f"Validation Actual Labels")
                 axes[1].set_title(f"Predicted Labels")
                 plt.show()
 
                 fig, axes = PlotConfusionMatrix(labels, predictions, dm.ClassNames)
-                axes.set_title(f"{i}-fold Confusion Matrix")
+                axes.set_title(f"{i}-fold Confusion Matrix (%)")
                 plt.show()
 
 
@@ -151,9 +159,11 @@ if __name__ == "__main__":
     predictions = []
     for image in images:
         predictions.append(model.Predict(image))
-    #predictions = model.PredictBatch(images)
 
-    # Create pie plots for predicted and actual labels
+    # Accuracy Score
+    correct = sum(1 for a, p in zip(labels, predictions) if a == p)
+    accuracy = 100 * correct / len(labels)
+
     actual_counts = pd.Series(labels).value_counts(normalize=True) * 100
     predicted_counts = pd.Series(predictions).value_counts(normalize=True) * 100
 
@@ -161,17 +171,21 @@ if __name__ == "__main__":
 
     print("\nBatch Prediction Results:")
     print("-------------------------")
-    #for i, (actual, predicted) in enumerate(zip(labels, predictions)):
-    #    status = "v" if actual == predicted else "x"
-    #    print(f"Sample {i+1}: Actual: {actual}, Predicted: {predicted} {status}")
-
-    # Accuracy against test set
     correct = sum(1 for a, p in zip(labels, predictions) if a == p)
     accuracy = 100 * correct / len(labels)
     print(f"\nBatch accuracy: {accuracy:.2f}%")
 
     # Confusion Matrix
-    PlotConfusionMatrix(labels, predictions, dm.ClassNames)
+    fig, axes = PlotConfusionMatrix(labels, predictions, dm.ClassNames)
+    axes.set_title(f"Test Data Confusion Matrix (%)(Overall Accuracy: {accuracy:.2f}%)")
+    plt.show()
+
+    # show images in group
+    random_indices = random.sample(range(len(labels)), 6)
+    print(random_indices)
+    model.ShowPredictedImages([images[i] for i in random_indices], predictedLabels=[predictions[i] for i in random_indices], actualLabels=[labels[i] for i in random_indices])
+
+
 
 
 

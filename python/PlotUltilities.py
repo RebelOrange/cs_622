@@ -14,6 +14,7 @@ from matplotlib import rcParams
 
 
 # change pyplot styling
+"""
 style.use('classic')
 # Customize to resemble MATLAB's figure defaults
 rcParams['lines.linewidth'] = 1.5  # Default line width in MATLAB
@@ -25,6 +26,7 @@ rcParams['axes.titlesize'] = 14  # Axes title size
 rcParams['axes.labelsize'] = 12  # Axes label size
 rcParams['xtick.labelsize'] = 10  # X-axis tick size
 rcParams['ytick.labelsize'] = 10  # Y-axis tick size
+"""
 
 def PlotPiePlot(actual_counts, predicted_counts, title = ""):
     fig, axes = plt.subplots(1, 2, figsize=(10, 5))
@@ -41,11 +43,9 @@ def PlotConfusionMatrix(labels, predictions, class_names, normalize: bool = True
     if normalize:
         cm_norm = cm.astype('float') / cm.sum(axis=1, keepdims=True) * 100
         cm = np.nan_to_num(cm_norm)  # Handle division by zero if any class is missing data
-    
-    
-    
+
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
-    disp.plot(cmap='Blues', xticks_rotation='vertical', colorbar=False, values_format=".1f")
+    disp.plot(cmap='Blues', xticks_rotation=15, colorbar=False, values_format=".1f")
     plt.title("Confusion Matrix (Normalized to Percentages)")
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")

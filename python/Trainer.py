@@ -15,7 +15,6 @@ def WriteCsv(data, csv_file_name):
         for row in data:
             writer.writerow(row)
 
-
 def PlotTrainingProgress(folder, additional_csvs, model,optimizer,save_plot=False):
     """
     Plot the training progress for the ResNet model by combining data across multiple training phases.
@@ -46,24 +45,104 @@ def PlotTrainingProgress(folder, additional_csvs, model,optimizer,save_plot=Fals
 
     # Customize and display/save the plot
     plt.xlabel("Epochs")
-    plt.ylabel("Metrics")
-    plt.title("ResNet Training Progress")
-    plt.legend()
+    plt.ylabel("Accuracy (%)")
+    plt.title(f"{model} Training Progress")
+    plt.grid(True)
+    plt.legend(loc="lower right")
+    plt.ylim(0, 100)
     if save_plot:
         plt.savefig(folder + f"Training_{model}_{optimizer}.png")
     else:
         plt.show()
 
 
+def PlotAllBestTrainingProgress(folder, best_csvs, save_plot=False):
+    """
+    Plot all the best CSV data into a single figure with proper labeling.
+
+    Parameters:
+    1. folder (str): Folder containing the CSV files.
+    2. best_csvs (dict): Dictionary with keys as (model, optimizer) and values as the best CSV files.
+    3. save_plot (bool): If True, saves the combined plot as a PNG file.
+    """
+    plt.figure(figsize=(12, 8))
+    print(f"Plotting all best CSV data from {folder}")
+
+    for (model, optimizer, lr), csv in best_csvs.items():
+        if model == "ResNet":
+            lineStyle = "--"
+        else:
+            lineStyle = "-"
+        try:
+            data = pd.read_csv(folder + csv)
+            epochs = data["Epoch"]
+            accuracy = data["Accuracy"]
+            plt.plot(epochs, accuracy, label=f"{model}-{optimizer} (LR={lr})", linestyle=lineStyle)
+        except FileNotFoundError:
+            print(f"Could not load CSV: {folder + csv}")
+
+    # Customize and save/display the plot
+    plt.xlabel("Epochs")
+    plt.ylabel("Accuracy")
+    plt.title("Best Training Trajectory Across Models and Optimizers (500 Training Files)")
+    plt.legend(loc="lower right")
+    plt.grid(True)
+    plt.ylim(0, 100)
+    if save_plot:
+        plt.savefig(folder + "All_Models_Optimizers_Training.png")
+    else:
+        plt.show()
+
+
+def FindBestLearningRate(folder, models, optimizers, learning_rates):
+    """
+    Find the best learning rate for each model and optimizer based on time to converge near 100% accuracy.
+
+    Parameters:
+    1. folder (str): Path to the folder containing CSV files.
+    2. models (list of str): List of model names.
+    3. optimizers (list of str): List of optimizer names.
+    4. learning_rates (list of float): List of learning rates used.
+
+    Returns:
+    dict: Dictionary with the best CSV file for each model-optimizer combination.
+    """
+    best_csv_files = {}
+    for model in models:
+        for optimizer in optimizers:
+            best_lr = None
+            min_time_to_converge = float("inf")
+            best_csv = None
+
+            for lr in learning_rates:
+                csv_file = f"{model}_Training_{optimizer}_{lr}_stats.csv"
+                try:
+                    data = pd.read_csv(folder + csv_file)
+                    if "Accuracy" in data.columns and "Time" in data.columns:
+                        time_to_converge = data.loc[data["Accuracy"] >= 99.9, "Time"].min()  # Assuming 99.9% as near 100%
+
+                        if pd.notna(time_to_converge) and time_to_converge < min_time_to_converge:
+                            min_time_to_converge = time_to_converge
+                            best_lr = lr
+                            best_csv = csv_file
+                except FileNotFoundError:
+                    print(f"CSV not found: {folder + csv_file}")
+
+            if best_csv is not None:
+                best_csv_files[(model, optimizer, best_lr)] = best_csv
+                print(f"Best CSV for {model} with {optimizer} is {best_csv} (LR={best_lr})")
+
+    return best_csv_files
+
+
 if __name__ == "__main__":
-
-
-
+    ...
+    TRAIN_MODEL = False
     print("########################### Loading training data... #################################")
     dm = DataManager()
     current_folder = os.getcwd()
     classes = ["sitting", "running", "drinking","eating", "listening_to_music"]
-    dm.LoadTrainingData(folderName=current_folder + "/../data/", csvFileName="Training_set.csv", numFiles=100, classFilter=classes)
+    dm.LoadTrainAndTestData(folderName=current_folder + "/../data/", csvFileName="Training_set.csv", numFiles=100, classFilter=classes)
 
     print("####################### Preprocessing data... #######################################")
     dm.RemoveMissingData()
@@ -98,7 +177,7 @@ if __name__ == "__main__":
     print("########################### Loop Training #####################################")
     ResNetStatsFinal = {}
     EffNetStatsFinal = {}
-    TRAIN_MODEL = True
+    TRAIN_MODEL = False
 
     csvFolder = "..//models//Training//csv_data//learning_rate_traj//"
     models = ["ResNet", "EfficientNet"]
@@ -138,6 +217,23 @@ if __name__ == "__main__":
             PlotTrainingProgress(csvFolder, additional_training_csvs,model, optimizer,save_plot=True)
     #except FileNotFoundError:
      #   print("Training Stats CSV does not exist. Skipping plotting.")
+    
+    
+    print(f"########################### Plot Training Data ##########################################")
+
+    # Find best learning rates for plotting
+    csvFolder = "../models/training/csv_data/learning_rate_traj/"
+    models = ["ResNet", "EfficientNet"]
+    optimizers = ["Adam", "SGD", "Adadelta"]
+    learning_rates = [0.1, 0.01, 0.001, 0.0001]
+
+    best_csvs = FindBestLearningRate(csvFolder, models, optimizers, learning_rates)
+    print(f"Best CSVs: {best_csvs}")
+
+
+    # Plot all best training progress in a single figure
+    PlotAllBestTrainingProgress(csvFolder, best_csvs, save_plot=False)
+        
     
     
 

@@ -74,8 +74,8 @@ class DataManager:
         print("There are ", dataLen, " images per class.")
 
         splitIndex = int(dataLen * split)
-        print(f"Splitting data at index: {splitIndex} ({split})")
 
+        print(f"Splitting data at index: {splitIndex} ({split})")
         for label in data["label"].unique():
             self.TrainingData = pd.concat([self.TrainingData, data[data["label"] == label].head(splitIndex)])
             self.TestData = pd.concat([self.TestData, data[data["label"]==label].tail(dataLen-splitIndex)])
@@ -232,6 +232,11 @@ class DataManager:
 
         nrows = int(np.sqrt(numImages))
         ncols = nrows+1
+
+        if numImages==1:
+            ncols = 1
+            nrows = 1
+
         print("nrows: ", nrows, "ncols: ", ncols)
         fig, axs = plt.subplots(nrows, ncols, figsize=(10, 10))
         for i in range(numImages):
@@ -239,11 +244,21 @@ class DataManager:
             pix = image.image
             if showGrayscale:
                 pix = image.grayscale
+            if numImages == 1:
+                axs.imshow(pix, cmap='gray' if showGrayscale else None)
+                axs.set_title(self.TrainingData.loc[imagesToShow[i], "label"])
+                axs.axis('off')
+                continue
             axs[i//ncols, i%ncols].imshow(pix, cmap='gray' if showGrayscale else None)
             axs[i//ncols, i%ncols].set_title(self.TrainingData.loc[imagesToShow[i], "label"])
             axs[i//ncols, i%ncols].axis('off')
+            
+        
+        plt.subplots_adjust(wspace=0.01, hspace=0.001)
         plt.show()
         pass
+
+
 
     def GetTestImages(self):
         images = []
@@ -276,11 +291,13 @@ class DataManager:
     
         # Plot side-by-side pie charts
         fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+        plt.suptitle("Label Distribution", fontsize=16)
+        
         axs[0].pie(train_counts, labels=train_counts.index, autopct='%1.1f%%', startangle=140)
-        axs[0].set_title(f"Training Data Distribution (# Files: {len(train)})")
+        axs[0].set_title(f"Training Data (# Files: {len(train)})")
     
         axs[1].pie(test_counts, labels=test_counts.index, autopct='%1.1f%%', startangle=140)
-        axs[1].set_title(f"Test Data Distribution (# Files: {len(test)})")
+        axs[1].set_title(f"Test Data (# Files: {len(test)})")
     
         plt.tight_layout()
         plt.show()
@@ -302,9 +319,9 @@ if __name__ == "__main__":
     currentFolder = os.getcwd()
     print("Current folder: ", currentFolder)
 
-    classes = ["sitting", "running", "drinking","eating"]
+    classes = ["sitting", "drinking","eating"]
     t.start()
-    dm.LoadTrainAndTestData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=100, classFilter=classes)
+    dm.LoadTrainAndTestData(folderName=currentFolder+ "//..//data//", csvFileName="Training_set.csv", numFiles=840, classFilter=classes)
     print("Training data loaded successfully.")
     print("Number of training images: ", len(dm.TrainingData))
     print("Number of classes: ", len(dm.TrainingData["label"].unique()))
@@ -324,7 +341,6 @@ if __name__ == "__main__":
         dm.SplitKFold(k=k, foldIndex=i)
 
 
-    sys.exit()
     #print(dm.TrainingData.head())
     #print(dm.TrainingData.describe())
     #print(dm.TrainingData.info())
@@ -356,7 +372,8 @@ if __name__ == "__main__":
 
     print("\nTest 8: show random images...")
     t.start()
-    dm.ShowRandomImages(numImages=5, showGrayscale=False, showSegmented=True)
+    for i in range(10):
+        dm.ShowRandomImages(numImages=1, showGrayscale=False, showSegmented=False)
     t.stop()
 
 
