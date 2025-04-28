@@ -123,7 +123,7 @@ class NNModel(Model):
             self.optimizer = optim.Adam(self.model.parameters(), lr=learningRate)
         elif optimizer == "SGD":
             print(f"Using SGD, learning rate: {learningRate}")
-            self.optimizer = optim.SGD(self.model.parameters(), lr=learningRate)
+            self.optimizer = optim.SGD(self.model.parameters(), lr=learningRate, momentum=0.0)
         else:
             print(f"Unsupported optimizer: {optimizer}, defaulting to Adam (learning rate: {learningRate})")
             self.optimizer = optim.Adam(self.model.parameters(), lr=learningRate)
@@ -328,13 +328,13 @@ class NNModel(Model):
             minutes, seconds = divmod(remainder, 60)
             print(f"Estimated remaining time: {int(hours)}h {int(minutes)}m {int(seconds)}s")
 
-    def SetOptimizer(self, optimizer: str="Adam", learningRate: float=0.001):
+    def SetOptimizer(self, optimizer: str="Adam", learningRate: float=0.001, momentum: float=0.9):
         if optimizer == "Adam":
             print(f"Using Adam, learning rate: {learningRate}")
             self.optimizer = optim.Adam(self.model.parameters(), lr=learningRate)
         elif optimizer == "SGD":
             print(f"Using SGD, learning rate: {learningRate}")
-            self.optimizer = optim.SGD(self.model.parameters(), lr=learningRate)
+            self.optimizer = optim.SGD(self.model.parameters(), lr=learningRate, momentum=0.9)
         else:
             print(f"Unsupported optimizer: {optimizer}, defaulting to Adam (learning rate: {learningRate})")
             self.optimizer = optim.Adam(self.model.parameters(), lr=learningRate)

@@ -95,7 +95,7 @@ class ModelManager:
                     print("Continuing with current optimizer state")
             else:
                 print("Warning: No optimizer_state_dict found in checkpoint")
-            
+
             epoch = checkpoint.get('epoch', 0)
             loss = checkpoint.get('loss', float('inf'))
             
